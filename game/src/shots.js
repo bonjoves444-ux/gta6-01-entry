@@ -1,79 +1,95 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// shots.js — deterministic ?shot= scenes for the four screenshots.
+// Each shot sets the time of day, Rio's place and vehicle, the wanted level and the
+// mission state, then lets the normal render loop draw the frame. No shot edits the
+// game: they only arrange what the camera sees.
+import { spawnPoliceCar } from "./police.js";
+import { startMission } from "./missions.js";
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
-
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
-  }
-  return Infinity;
+export function readShotNumber() {
+  const params = new URLSearchParams(window.location.search);
+  const shot = parseInt(params.get("shot") || "", 10);
+  return Number.isFinite(shot) && shot >= 1 && shot <= 4 ? shot : 0;
 }
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
-  }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
-  }
-  return best;
+function placePlayerInCar(ctx, carIndex, x, z, heading) {
+  const car = ctx.cars[carIndex];
+  car.mesh.position.set(x, 0, z);
+  car.heading = heading;
+  car.mesh.rotation.y = heading;
+  car.parked = false;
+  ctx.player.inCar = car;
+  ctx.player.mesh.visible = false;
+  ctx.player.mesh.position.set(x, 0, z);
 }
 
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+function placePlayerOnFoot(ctx, x, z, heading) {
+  ctx.player.inCar = null;
+  ctx.player.mesh.visible = true;
+  ctx.player.mesh.position.set(x, 0, z);
+  ctx.player.heading = heading;
+  ctx.player.mesh.rotation.y = heading;
+}
+
+export function applyShotScene(ctx, shot) {
+  const city = ctx.city;
+  // Freeze gameplay motion for the shot: the frame is a still tableau of the
+  // live game, so police, traffic and the player hold their arranged places.
+  ctx.shotHold = true;
+  ctx.sun.intensity = 1.15;
+  if (shot === 1) {
+    // Cover: a police chase on the beachfront avenue — wanted stars, minimap,
+    // mission objective and three cruisers closing in behind Rio's car.
+    placePlayerInCar(ctx, 0, -110, 40, 0);
+    ctx.player.cash = 2450;
+    ctx.player.wanted = 3;
+    ctx.police.heat = 100;
+    for (let i = 0; i < 3; i++) spawnPoliceCar(ctx);
+    ctx.police.cars.forEach((car, i) => {
+      // Cruisers right on Rio's tail, between the chase camera and his car.
+      car.mesh.position.set(-113 + i * 3, 0, 34 - i * 6);
+      car.heading = 0;
+      car.mesh.rotation.y = 0;
+    });
+    ctx.hud.setObjective("3 — Hot Pursuit", "Lose the police — get your wanted level to zero");
+    ctx.cameraMode = "chase-far";
+    ctx.timeOfDay = "day";
+  } else if (shot === 2) {
+    // Downtown driving: Rio in traffic between the towers, Marina Tower ahead.
+    placePlayerInCar(ctx, 2, 0, 110, Math.PI);
+    ctx.player.cash = 1300;
+    ctx.player.wanted = 0;
+    ctx.traffic.forEach((car, i) => {
+      car.mesh.position.set(-55 + (i % 3) * 55, 0, 60 - i * 22);
+    });
+    ctx.hud.setObjective("1 — Getaway Driver", "Drive to the docks marker");
+    ctx.cameraMode = "chase";
+    ctx.timeOfDay = "day";
+  } else if (shot === 3) {
+    // On foot at the market: the pickup mission, gold beacon over the stalls,
+    // pedestrians and a parked car nearby. Rio faces south toward the market.
+    placePlayerOnFoot(ctx, -6, 122, 0);
+    ctx.player.cash = 800;
+    ctx.player.wanted = 0;
+    ctx.player.hasPackage = false;
+    startMission(ctx, 1);
+    ctx.cameraMode = "follow";
+    ctx.timeOfDay = "day";
+  } else if (shot === 4) {
+    // Dusk overview: Rio on the beach promenade, the city glowing behind him,
+    // start-screen energy with the full HUD on show.
+    placePlayerOnFoot(ctx, -172, 40, Math.PI / 2);
+    ctx.player.cash = 5000;
+    ctx.player.wanted = 1;
+    ctx.police.heat = 100;
+    spawnPoliceCar(ctx);
+    ctx.sun.intensity = 0.55;
+    ctx.sun.color.setHex(0xff9d5c);
+    ctx.scene.background.setHex(0x2a3a5c);
+    ctx.scene.fog.color.setHex(0x2a3a5c);
+    ctx.hud.setObjective("5 — The Solmar Heist", "Escape to the safehouse on the beach");
+    ctx.cameraMode = "wide";
+    ctx.timeOfDay = "dusk";
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  ctx.hud.update(ctx);
+  return shot;
 }

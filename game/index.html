@@ -1,19 +1,109 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<link rel="icon" href="data:,">
+<title>SOLMAR — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b1c2c;
+    font-family:Verdana,Arial,sans-serif;color:#fff}
+  #game-canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  #minimap-wrap{position:absolute;top:14px;right:14px;width:190px;height:190px;
+    border:3px solid rgba(255,255,255,.85);border-radius:50%;overflow:hidden;
+    background:#12324a;box-shadow:0 0 0 3px rgba(0,0,0,.45)}
+  #minimap{width:100%;height:100%;display:block}
+  #wanted{position:absolute;top:16px;right:222px;font-size:34px;letter-spacing:4px;
+    color:#ffd23e;text-shadow:0 2px 0 #000,0 0 12px rgba(0,0,0,.8)}
+  #cash{position:absolute;top:60px;right:222px;font-size:26px;font-weight:bold;color:#7dff9a;
+    text-shadow:0 2px 0 #000}
+  #health-wrap{position:absolute;top:100px;right:222px;width:180px}
+  #health-label{font-size:15px;font-weight:bold;text-shadow:0 1px 0 #000;margin-bottom:3px}
+  #health-bar-outer{height:14px;background:rgba(0,0,0,.6);border:2px solid #fff;border-radius:7px}
+  #health-bar{height:100%;width:100%;background:#37d67a;border-radius:5px}
+  #objective{position:absolute;top:14px;left:14px;max-width:460px;background:rgba(0,0,0,.62);
+    border-left:6px solid #ffd23e;padding:10px 14px;border-radius:4px}
+  #objective-title{font-size:19px;font-weight:bold;color:#ffd23e}
+  #objective-text{font-size:16px;margin-top:4px;line-height:1.35}
+  #speed{position:absolute;bottom:18px;right:20px;font-size:30px;font-weight:bold;
+    text-shadow:0 2px 0 #000;text-align:right}
+  #speed small{font-size:15px;color:#ffd23e}
+  #toast{position:absolute;bottom:110px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.72);padding:10px 22px;border-radius:6px;font-size:20px;
+    font-weight:bold;display:none;text-align:center}
+  #hint{position:absolute;bottom:18px;left:16px;font-size:14px;line-height:1.5;
+    background:rgba(0,0,0,.55);padding:8px 12px;border-radius:4px}
+  #crosshair{position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;
+    font-size:22px;text-align:center;color:#fff;text-shadow:0 0 4px #000;display:none}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(160deg,rgba(8,30,52,.88),rgba(120,40,10,.82));z-index:10}
+  .panel{max-width:640px;width:92%;background:rgba(0,0,0,.66);border:3px solid #ffd23e;
+    border-radius:12px;padding:28px 34px;text-align:center}
+  .panel h1{margin:0 0 4px;font-size:52px;letter-spacing:6px;color:#ffd23e;
+    text-shadow:0 3px 0 #b3541e}
+  .panel h2{margin:0 0 14px;font-size:20px;color:#7dd8ff;font-weight:normal}
+  .panel p{font-size:16px;line-height:1.55;text-align:left}
+  .panel .controls{font-size:15px;line-height:1.7;text-align:left;background:rgba(255,255,255,.08);
+    padding:12px 16px;border-radius:8px}
+  .big-btn{pointer-events:auto;cursor:pointer;font-size:22px;font-weight:bold;color:#201400;
+    background:#ffd23e;border:0;border-radius:8px;padding:14px 42px;margin-top:16px}
+  .big-btn:hover{background:#ffe27a}
+  .small-btn{pointer-events:auto;cursor:pointer;font-size:16px;font-weight:bold;color:#fff;
+    background:#1c6fb8;border:0;border-radius:6px;padding:9px 18px;margin:6px 4px 0}
+  #pause-overlay,#gameover-overlay{display:none}
+  #mission-banner{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+    font-size:44px;font-weight:bold;color:#ffd23e;text-shadow:0 3px 0 #000,0 0 24px rgba(0,0,0,.9);
+    display:none;text-align:center}
 </style>
+<script type="importmap">
+{"imports":{"three":"./vendor/three.module.min.js"}}
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game-canvas"></canvas>
+<div id="hud">
+  <div id="objective"><div id="objective-title">SOLMAR CITY</div>
+    <div id="objective-text">Welcome to Solmar. Steal a car and meet Marco at the docks.</div></div>
+  <div id="wanted"></div>
+  <div id="cash">$0</div>
+  <div id="health-wrap"><div id="health-label">HEALTH</div>
+    <div id="health-bar-outer"><div id="health-bar"></div></div></div>
+  <div id="minimap-wrap"><canvas id="minimap" width="190" height="190"></canvas></div>
+  <div id="speed"></div>
+  <div id="toast"></div>
+  <div id="mission-banner"></div>
+  <div id="crosshair">+</div>
+  <div id="hint">WASD move / drive &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; SPACE handbrake<br>
+    F punch &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; C camera &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+</div>
+<div id="start-overlay" class="overlay"><div class="panel">
+  <h1>SOLMAR</h1>
+  <h2>An open-world crime game — sun, sea, and one last job.</h2>
+  <p>You are <b>Rio Vega</b>, a getaway driver pulled back into crew life. Solmar City is
+  yours to explore: steal cars, outrun the Solmar Police, run five crew missions, take
+  taxi fares, and build your cash from $0 to king of the coast.</p>
+  <div class="controls">
+    <b>WASD</b> walk / drive &nbsp; <b>E</b> steal &amp; enter a car, exit a car<br>
+    <b>SPACE</b> handbrake &nbsp; <b>F</b> punch &nbsp; <b>CLICK</b> shoot pistol<br>
+    <b>C</b> change camera &nbsp; <b>P</b> pause &nbsp; <b>M</b> sound on/off &nbsp; <b>L</b> save game
+  </div>
+  <button id="start-btn" class="big-btn">START ENGINE</button><br>
+  <button id="continue-btn" class="small-btn">Continue saved game</button>
+  <button id="sound-btn" class="small-btn">Sound: ON</button>
+</div></div>
+<div id="pause-overlay" class="overlay"><div class="panel">
+  <h1 style="font-size:40px">PAUSED</h1>
+  <p style="text-align:center">Solmar waits for no one. Except right now.</p>
+  <button id="resume-btn" class="big-btn">RESUME</button><br>
+  <button id="save-btn" class="small-btn">Save game</button>
+  <button id="restart-btn" class="small-btn">Restart story</button>
+</div></div>
+<div id="gameover-overlay" class="overlay"><div class="panel">
+  <h1 style="font-size:40px;color:#ff5a5a">BUSTED</h1>
+  <p style="text-align:center" id="gameover-text">The Solmar Police caught up with Rio.</p>
+  <button id="retry-btn" class="big-btn">TRY AGAIN</button>
+</div></div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
