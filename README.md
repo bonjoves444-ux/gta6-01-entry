@@ -1,106 +1,140 @@
-[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![rank](https://make.fun/badge/gta6-01/bonjoves444-ux/gta6-01-entry/rank.svg)](https://make.fun/bounty/gta6-01)
-[![reward](https://make.fun/badge/gta6-01/bonjoves444-ux/gta6-01-entry/reward.svg)](https://make.fun/bounty/gta6-01)
-
 # SOLMAR — Open-World Crime Game
 
 An original open-world crime game for the make.fun **Make GTA 6** bounty
-(gta6-01). No Rockstar names, characters, maps, art or music — Solmar City,
-Rio Vega, Marco, Lena and the whole crew story are invented here.
+(`gta6-01`), built with three.js and plain static files. No network
+requests, no borrowed assets: the city, the cars, the radio and the story
+are all SOLMAR's own.
 
-You are Rio Vega, a getaway driver pulled back into crew life. Explore Solmar
-City on foot and by car at golden hour, steal cars, outrun the Solmar Police
-and their helicopter, run eight crew missions, take taxi fares, buy guns at
-Ammu-Nation, tune your car at Rio's Garage, and build your cash and crew rep
-from $0 to king of the coast.
+## The game
 
-## How to run
+Sunset over a beachfront city. You are a driver for Marco and Lena's crew,
+working eight story missions from getaway driver to King of the Coast while
+the Solmar police chase you across the beachfront road, downtown and the
+docks.
 
-Serve `game/` with any static HTTP server and open `game/index.html` in
-desktop Chrome. For example:
+- **Open world**: a beach with the sea to the west, a beachfront road, a
+  downtown of neon towers, the Marina Tower with its blinking beacon, the
+  Solmar Wheel turning over the sand, a market, docks, palms, lamps and
+  traffic lights. Streets form a grid; buildings are dense enough that no
+  view is an empty flat patch.
+- **On foot and by car**: walk with WASD, steal any car with E, drive with
+  WASD, Space handbrakes, N fires the NOS boost with a blue flame. Cars
+  take crash damage; armour from the garage cuts it.
+- **Wanted and police**: 0–5 stars. Cruisers chase in spread lanes so they
+  flank instead of stacking, each with a flashing red/blue lightbar and
+  POLICE door lettering. At 3 stars a helicopter joins, circling overhead
+  with a searchlight cone. The HUD's police roster lists AIR-1 and the
+  nearest units with distances.
+- **Missions and story**: 8 missions in order — Getaway Driver, The Pickup,
+  Hot Pursuit, Dock Delivery, The Solmar Heist, The Informant, Smuggler's
+  Run, King of the Coast — each with an objective marker, dialogue from
+  Marco or Lena, a cash payout and +12 crew reputation. Taxi fares appear
+  between missions (+$40, +2 rep).
+- **Combat**: pistol (owned), SMG ($600 at Ammu-Nation, automatic fire) and
+  shotgun ($900, five pellets at once), each with its own ammo and sound.
+  Rival gang members chase and swing; F punches up close.
+- **Shops**: Ammu-Nation at (47, 118) sells guns and ammo. Rio's Garage at
+  (-47, 63) sells repairs ($200), NOS refills ($250) and armour ($500);
+  garage services need you in a car. Press E within 8 m to open a shop.
+- **HUD**: mission panel, wanted stars, cash, health and reputation bars
+  with a rank label, police roster, three weapon slots, radio line, a
+  dialogue box, a circular minimap drawn from the real streets, building
+  blocks, coastline, tower, heli and police dots, and a big km/h readout
+  with the car name and a NOS meter.
+- **Audio**: three radio stations with different tempos and bass lines
+  (SOLMAR FM 101.5, RADIO ORO 88.2, WAVE 99.9), cycled with R; distinct
+  shot sounds, a NOS whoosh, cash blips. M mutes.
+- **Save**: L saves cash, rep, weapons, radio, mission progress and
+  position to localStorage (`solmar-save-v2`); it loads on the next start.
 
-```sh
-cd game && python3 -m http.server 8080
-```
+## Controls
 
-Then open http://localhost:8080/ — no build step, no network requests, every
-file the game loads lives under `game/`. Or run `node serve.ts` from the
-repo root, which serves `game/` on http://localhost:8080.
-
-## How to play
-
-- **WASD** — walk / drive (Shift runs on foot)
-- **E** — steal and enter a car, step out of one, or shop at a marker
-- **SPACE** — handbrake drift, **N** — NOS boost
-- **1 / 2 / 3** — pistol / SMG / shotgun (buy the locked ones at Ammu-Nation)
-- **F** — punch, **CLICK** — shoot (hold for the SMG)
-- **R** — cycle the three radio stations
-- **C** — change camera, **P** — pause, **M** — sound on/off, **L** — save game
-- **T** — take a taxi fare
-
-## What is in the game — round 2
-
-- A golden-hour coastal city: downtown towers with lit windows and neon,
-  market streets, docks, a beach promenade with palms and umbrellas, and the
-  big Solmar Wheel turning on the pier side, with traffic cars and pedestrians.
-- Wanted stars with police cruisers that chase, ram and arrest — plus a police
-  helicopter with a searchlight that joins the chase at three stars — and a
-  live police-response roster on the HUD (unit, distance, behaviour).
-- Eight crew missions with spoken dialogue from Marco and Lena: Getaway
-  Driver, The Pickup, Hot Pursuit, Dock Delivery, The Solmar Heist, The
-  Informant, Smuggler's Run and King of the Coast — plus taxi side jobs,
-  street cash pickups and a crew-rep rank that grows with every job done.
-- Combat on foot with three weapons (pistol, SMG, shotgun), rival crew
-  members who fight back, and drive-by capable cars with NOS and armour.
-- Shops that spend real cash: Ammu-Nation sells guns and ammo, Rio's Garage
-  sells repairs, NOS refills and armour plating.
-- A dense HUD: mission objective with its stage (e.g. MISSION 3/8 · STEP 1/1),
-  wanted stars, cash, health, crew rep, speed, weapon slots, radio station,
-  dialogue line, police roster, and a street minimap with buildings, coast,
-  the helicopter and the mission marker.
-- Synthesized WebAudio sound (engine, sirens, shots, cash, three radio
-  stations) and a save system in localStorage with a downloadable save file.
+| Key | Action |
+| --- | --- |
+| WASD / arrows | Walk or drive (camera-relative on foot) |
+| E | Enter a car, leave a car, open a shop |
+| Space | Handbrake |
+| N | NOS boost |
+| Click | Shoot (hold for SMG auto fire) |
+| F | Punch |
+| 1 / 2 / 3 | Pistol / SMG / Shotgun |
+| R | Change radio station |
+| C | Cycle camera (chase / far / wide) |
+| P or Esc | Pause |
+| L | Save |
+| M | Mute |
 
 ## Screenshots
 
-The four screenshots in `screenshots/` are real renders of this game's own
-code, taken in a desktop browser from the deterministic `?shot=1..4` scenes.
-Round 2 stages them as live action at speed — no frozen tableaus: a beachfront
-police chase with the helicopter overhead, downtown traffic at speed, the
-market pickup on foot with rivals closing in, and the dusk heist escape.
+`?shot=N` stages a live scene (no input, no mission progress, no game
+over) — the car holds a fixed speed while police chase and the helicopter
+circles:
 
-## Round 2 — what changed from round 1
+1. **Hot Pursuit** — beachfront at 108 km/h, wanted 4, three flanking
+   cruisers, helicopter overhead, ferris wheel and sea in frame.
+2. **The Informant** — downtown at 86 km/h, wanted 1, neon towers.
+3. **The Pickup** — on foot at the market, SMG drawn, two rivals, stalls
+   and the tower beacon in one wide frame.
+4. **King of the Coast** — dusk escape at 115 km/h, wanted 5, helicopter
+   and three cruisers.
 
-Round 1 scored 977,345 (12W/0D/0L) but won its house games by a hair: frozen
-0 km/h tableaus, flat midday light, plain cruisers, a thin HUD and five
-missions. Round 2 fixes exactly that: golden-hour lighting with lit windows
-and neon, live-motion screenshots at 86–115 km/h, a helicopter with a
-searchlight, split red/blue light bars and POLICE door markings, a police
-roster, weapon slots, radio, dialogue and crew rep on the HUD, a street
-minimap with buildings, three more missions, two more weapons, two shops,
-NOS and drift.
+Take them with `python3 shoot-solmar.py 6000` (see below) or open
+`http://127.0.0.1:8080/?shot=1` in a browser.
 
-## Files
+## Running it
 
-- `game/index.html` — page, HUD, menus and the shop overlay
-- `game/src/main.js` — boot, golden-hour light, game loop, camera, live shots
-- `game/src/city.js` — Solmar City: roads, towers, neon, beach, wheel, docks
-- `game/src/player.js` — Rio on foot, entering and leaving cars, loadout
-- `game/src/vehicles.js` — stealable cars, traffic, arcade driving, NOS
-- `game/src/police.js` — wanted level, cruisers, helicopter, roster
-- `game/src/missions.js` — the eight-mission crew story and taxi jobs
-- `game/src/combat.js` — fists, three weapons, rival crew and hit effects
-- `game/src/shops.js` — Ammu-Nation and Rio's Garage
-- `game/src/hud.js` — HUD, roster, weapons, radio, dialogue, minimap
-- `game/src/audio.js` — synthesized sound, three radio stations
-- `game/src/save.js` — save / load in localStorage (v2: full loadout)
-- `game/src/shots.js` — deterministic live-action screenshot scenes
-- `game/src/input.js` — keyboard and mouse input
-- `game/src/random.js` — seeded random numbers
-- `game/vendor/three.module.min.js` — vendored three.js (minified build)
-- `main.ts` — the entry program: copies `game/` and `screenshots/` to the
-  output directory and writes `dossier.json`
+```sh
+node serve.ts --port 8080   # then open http://127.0.0.1:8080/
+```
 
-## License
+## Round 1 faults and the round 2 fixes
 
-MIT — see `LICENSE`.
+Round 1 scored 977,345 (12W/0D/0L) but won every house game only by a hair.
+Viewing its four shots against the leaders showed five faults:
+
+1. **Frozen tableaus.** Shots held the car at 0 km/h, so cars looked parked.
+   Round 2 stages live scenes: the car holds 108 / 86 / 115 km/h while
+   police chase and traffic moves.
+2. **Empty frame.** Half the frame was flat tan ground, untextured boxes
+   and flat midday light. Round 2 is golden-hour sunset with a beach, sea,
+   ferris wheel, neon signs, lit windows, palms, umbrellas and dense
+   buildings, plus a deeper dusk variant for the final shot.
+3. **Police read as plain cars.** Round 2 cruisers carry a flashing
+   red/blue lightbar, POLICE door lettering and unit numbers, chase in
+   spread lanes, and a helicopter with a searchlight joins at 3 stars.
+4. **Thin HUD.** Round 2 stacks a police roster, three weapon slots, a
+   radio line, a dialogue box, a real street minimap, a reputation bar and
+   a big km/h readout with the car name and NOS meter.
+5. **Thin depth.** Round 1 had 5 missions, 1 pistol, no shops. Round 2 has
+   8 missions, 3 weapons, Ammu-Nation and Rio's Garage, NOS, armour, taxi
+   fares and a save system.
+
+Two bugs from round 1 are fixed by design: the on-foot camera now holds
+its heading and never chases the player's facing (which used to feed back
+into camera-relative strafing and spin the player in circles), and the
+shop's cash line lives in its own paragraph — the open-shop code rewrites
+the subtitle, which used to destroy a nested cash element and crash.
+
+## Layout
+
+```
+game/index.html        page + HUD
+game/src/main.js       bootstrap + main loop + camera
+game/src/city.js       sunset city: streets, buildings, wheel, tower, market
+game/src/vehicles.js   cars, traffic, driving model, NOS, damage
+game/src/player.js     on-foot movement, stealing cars, stats
+game/src/police.js     wanted level, cruisers, helicopter, roster
+game/src/missions.js   the eight missions, markers, payouts, fares
+game/src/combat.js     weapons, tracers, rivals
+game/src/shops.js      Ammu-Nation and Rio's Garage
+game/src/hud.js        HUD panels, roster, minimap, dialogue, toasts
+game/src/audio.js      radio stations and effects (WebAudio)
+game/src/input.js      keyboard + mouse state
+game/src/save.js       localStorage save / load
+game/src/shots.js      ?shot=N live staging + debug snapshot
+game/vendor/three.module.min.js   vendored three.js
+main.ts                entry program: copies game/ + screenshots/ to
+                       $MAKEFUN_OUTPUT_DIR and writes dossier.json
+serve.ts               static dev server
+shots.json             the four shots' metadata
+```

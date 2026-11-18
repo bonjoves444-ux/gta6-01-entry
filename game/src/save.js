@@ -1,92 +1,58 @@
-// save.js — save and load Rio's progress in localStorage, plus a save file
-// download. Round 2 saves the whole loadout: cash, rep, weapons and ammo,
-// the mission index, the radio station and where Rio was standing.
-const SAVE_KEY = "solmar-save-v2";
+// Save and load through localStorage: cash, reputation, weapons, radio,
+// mission progress and where the player stood.
+export const SAVE_KEY = 'solmar-save-v2';
 
-export function createSaveSystem() {
-  return {
-    saveGame(ctx) {
-      try {
-        const player = ctx.player;
-        const data = {
-          version: 2,
-          cash: player.cash,
-          health: player.health,
-          rep: player.rep || 0,
-          wanted: player.wanted,
-          weapon: player.weapon,
-          weapons: player.weapons,
-          ammoByWeapon: player.ammoByWeapon,
-          ammo: player.ammo,
-          missionIndex: ctx.missions.index,
-          missionsCompleted: ctx.missions.completed,
-          radioStation: ctx.audio.station().name,
-          position: {
-            x: player.mesh.position.x,
-            z: player.mesh.position.z,
-          },
-          savedAt: new Date().toISOString(),
-        };
-        window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-        ctx.hud.showToast("Game saved — $" + player.cash.toLocaleString("en-US") + " in the bank");
-        return true;
-      } catch (error) {
-        ctx.hud.showToast("Save failed — browser storage is unavailable");
-        return false;
-      }
-    },
-    loadGame(ctx) {
-      try {
-        const raw = window.localStorage.getItem(SAVE_KEY);
-        if (!raw) return null;
-        const data = JSON.parse(raw);
-        const player = ctx.player;
-        player.cash = data.cash || 0;
-        player.health = data.health || 100;
-        player.rep = data.rep || 0;
-        player.wanted = 0;
-        player.weapon = data.weapon || "pistol";
-        player.weapons = data.weapons || { pistol: true, smg: false, shotgun: false };
-        player.ammoByWeapon = data.ammoByWeapon || { pistol: 24, smg: 0, shotgun: 0 };
-        player.ammo = player.ammoByWeapon[player.weapon] || 0;
-        if (data.position) {
-          player.mesh.position.x = data.position.x;
-          player.mesh.position.z = data.position.z;
-        }
-        ctx.missions.index = data.missionIndex || 0;
-        ctx.missions.completed = data.missionsCompleted || 0;
-        return data;
-      } catch (error) {
-        return null;
-      }
-    },
-    hasSave() {
-      try {
-        return !!window.localStorage.getItem(SAVE_KEY);
-      } catch (error) {
-        return false;
-      }
-    },
-    // Wipe the save and start the story over from mission one.
-    clearSave() {
-      try {
-        window.localStorage.removeItem(SAVE_KEY);
-        return true;
-      } catch (error) {
-        return false;
-      }
-    },
-    // Download the same save as a file, so progress can be kept outside the browser.
-    downloadSaveFile(ctx) {
-      const raw = window.localStorage.getItem(SAVE_KEY);
-      if (!raw) return;
-      const blob = new Blob([raw], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "solmar-save.json";
-      link.click();
-      URL.revokeObjectURL(url);
-    },
-  };
+export function saveGame(G) {
+  try {
+    const p = G.player;
+    const data = {
+      cash: p.cash,
+      rep: p.rep,
+      health: p.health,
+      weapon: p.weapon,
+      weapons: p.weapons,
+      radio: G.audio ? G.audio.station : 0,
+      mission: G.missions.index,
+      step: G.missions.step,
+      x: p.x,
+      z: p.z,
+      heading: p.heading,
+      savedAt: Date.now(),
+    };
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function loadGame() {
+  try {
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function applySave(G, data) {
+  if (!data) return;
+  const p = G.player;
+  if (typeof data.cash === 'number') p.cash = data.cash;
+  if (typeof data.rep === 'number') p.rep = data.rep;
+  if (typeof data.health === 'number') p.health = data.health;
+  if (data.weapons) p.weapons = data.weapons;
+  if (data.weapon && p.weapons[data.weapon]) p.weapon = data.weapon;
+  if (typeof data.radio === 'number' && G.audio) G.audio.setStation(data.radio);
+  if (typeof data.mission === 'number') G.missions.index = Math.max(0, Math.min(7, data.mission));
+  if (typeof data.step === 'number') G.missions.step = data.step === 1 ? 1 : 0;
+  if (typeof data.x === 'number' && typeof data.z === 'number') {
+    p.x = data.x;
+    p.z = data.z;
+    p.group.position.set(p.x, 0, p.z);
+  }
+  if (typeof data.heading === 'number') {
+    p.heading = data.heading;
+    p.camHeading = data.heading;
+  }
 }

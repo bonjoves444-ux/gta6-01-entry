@@ -1,228 +1,153 @@
-// combat.js — fists and three guns: the pistol Rio starts with, the fast SMG
-// and the close-range shotgun, plus rival crew members and hit effects.
-// Weapons are bought at Ammu-Nation; 1/2/3 switches between the ones owned.
-import * as THREE from "three";
-import { raiseWanted } from "./police.js";
+// Combat: three weapons, tracers, rival gang members who chase and swing,
+// and the locked-weapon toast that points the player at Ammu-Nation.
+import * as THREE from 'three';
+import { killEnemy } from './player.js';
 
 export const WEAPONS = {
-  pistol: { name: "Pistol", damage: 34, cooldown: 0.32, auto: false, pellets: 1, spread: 0, price: 0 },
-  smg: { name: "SMG", damage: 14, cooldown: 0.09, auto: true, pellets: 1, spread: 0.03, price: 600 },
-  shotgun: { name: "Shotgun", damage: 13, cooldown: 0.85, auto: false, pellets: 5, spread: 0.09, price: 900 },
+  pistol: { name: 'Pistol', damage: 34, price: 0, auto: false, sound: 'pop' },
+  smg: { name: 'SMG', damage: 16, price: 600, auto: true, sound: 'rattle' },
+  shotgun: { name: 'Shotgun', damage: 22, price: 900, auto: false, sound: 'boom', pellets: 5 },
 };
 
-export function createCombatSystem(scene) {
-  const flashGeometry = new THREE.SphereGeometry(0.35, 8, 6);
-  const flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffe27a });
-  const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-  flash.visible = false;
-  scene.add(flash);
-  // A tracer line from the muzzle to the hit point, shown for one frame's flash.
-  const tracerGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 1),
-  ]);
-  const tracer = new THREE.Line(tracerGeo, new THREE.LineBasicMaterial({ color: 0xffe27a }));
-  tracer.visible = false;
-  scene.add(tracer);
-  return {
-    scene,
-    flash,
-    tracer,
-    flashTimer: 0,
-    punchTimer: 0,
-    shootCooldown: 0,
-    enemies: [],
-    sparks: [],
-  };
-}
-
-// Short-lived orange sparks at a crash or a bullet impact.
-export function addCrashSparks(ctx, x, y, z) {
-  const combat = ctx.combat;
-  const geo = new THREE.SphereGeometry(0.22, 6, 5);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xffa62b });
-  for (let i = 0; i < 8; i++) {
-    const spark = new THREE.Mesh(geo, mat);
-    spark.position.set(x + (Math.random() - 0.5) * 2, y + Math.random(), z + (Math.random() - 0.5) * 2);
-    spark.userData.life = 0.5 + Math.random() * 0.3;
-    combat.scene.add(spark);
-    combat.sparks.push(spark);
-  }
-}
-
-export function updateCombatEffects(ctx, dt) {
-  const combat = ctx.combat;
-  if (combat.flashTimer > 0) {
-    combat.flashTimer -= dt;
-    if (combat.flashTimer <= 0) {
-      combat.flash.visible = false;
-      combat.tracer.visible = false;
-    }
-  }
-  for (let i = combat.sparks.length - 1; i >= 0; i--) {
-    const spark = combat.sparks[i];
-    spark.userData.life -= dt;
-    spark.position.y += dt * 2;
-    if (spark.userData.life <= 0) {
-      combat.scene.remove(spark);
-      combat.sparks.splice(i, 1);
-    }
-  }
-  if (combat.shootCooldown > 0) combat.shootCooldown -= dt;
-  if (combat.punchTimer > 0) combat.punchTimer -= dt;
-}
-
-// Switch to an owned weapon; locked ones get a toast instead of a switch.
-export function switchWeapon(ctx, key) {
-  const player = ctx.player;
-  if (!player.weapons[key]) {
-    ctx.hud.showToast(WEAPONS[key].name + " is locked — buy it at Ammu-Nation ($" + WEAPONS[key].price + ")");
+export function switchWeapon(G, key) {
+  const names = ['pistol', 'smg', 'shotgun'];
+  const w = names[key - 1];
+  if (!w) return;
+  const def = WEAPONS[w];
+  const owned = G.player.weapons[w].owned;
+  if (!owned) {
+    G.hud.showToast(G, `${def.name} is LOCKED — buy it at Ammu-Nation for $${def.price}.`);
     return;
   }
-  if (player.weapon === key) return;
-  player.weapon = key;
-  ctx.hud.showToast(WEAPONS[key].name + " ready — " + (player.ammoByWeapon[key] || 0) + " rounds");
-  ctx.audio.playWeaponSwitch();
+  G.player.weapon = w;
+  G.hud.showToast(G, `${def.name} ready — ${G.player.weapons[w].ammo} rounds.`);
+  G.audio?.click?.();
 }
 
-// A rival crew member: a red-jacketed walker who shoves back when hit.
-export function spawnEnemy(ctx, x, z) {
+export function makeTracer(G, from, to) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(from.x, from.y, from.z),
+    new THREE.Vector3(to.x, to.y, to.z),
+  ]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe94d }));
+  G.scene.add(line);
+  G.tracers.push({ line, life: 0.09 });
+}
+
+export function shoot(G) {
+  const p = G.player;
+  const w = WEAPONS[p.weapon];
+  const state = p.weapons[p.weapon];
+  if (state.ammo <= 0) {
+    G.hud.showToast(G, `${w.name} is dry — buy ammo at Ammu-Nation.`);
+    G.audio?.dry?.();
+    return;
+  }
+  state.ammo--;
+  const origin = p.inCar && p.car
+    ? { x: p.car.x, y: 1.2, z: p.car.z }
+    : { x: p.x, y: 1.5, z: p.z };
+  const heading = p.inCar && p.car ? p.car.heading : p.heading;
+  const dx = Math.sin(heading);
+  const dz = Math.cos(heading);
+  let hit = null;
+  let bestD = 46;
+  const cone = p.weapon === 'shotgun' ? 0.34 : 0.16;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    const ex = e.x - origin.x;
+    const ez = e.z - origin.z;
+    const d = Math.hypot(ex, ez);
+    if (d > 46 || d < 0.5) continue;
+    const dot = (ex * dx + ez * dz) / d;
+    if (dot > Math.cos(cone) && d < bestD) {
+      bestD = d;
+      hit = e;
+    }
+  }
+  const end = hit
+    ? { x: hit.x, y: 1.2, z: hit.z }
+    : { x: origin.x + dx * 42, y: 1.2, z: origin.z + dz * 42 };
+  makeTracer(G, origin, end);
+  G.audio?.shot?.(p.weapon);
+  if (hit) {
+    const pellets = w.pellets ?? 1;
+    hit.health -= w.damage * pellets;
+    if (hit.health <= 0) killEnemy(G, hit);
+  }
+}
+
+export function spawnRival(G, x, z) {
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xa83232 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.0, 0.45), bodyMat);
-  body.position.y = 1.15;
-  group.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5),
-    new THREE.MeshLambertMaterial({ color: 0xc98a5e }));
-  head.position.y = 1.95;
+  const coat = new THREE.Mesh(
+    new THREE.BoxGeometry(0.72, 0.9, 0.42),
+    new THREE.MeshLambertMaterial({ color: 0x8a1f2a })
+  );
+  coat.position.y = 1.15;
+  group.add(coat);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.26, 12, 10),
+    new THREE.MeshLambertMaterial({ color: 0xc9a586 })
+  );
+  head.position.y = 1.8;
   group.add(head);
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.35),
-    new THREE.MeshLambertMaterial({ color: 0x222222 }));
-  legs.position.y = 0.42;
-  group.add(legs);
+  const band = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.12, 0.5),
+    new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+  );
+  band.position.y = 1.95;
+  group.add(band);
+  G.scene.add(group);
+  const enemy = { group, x, z, health: 100, dead: false, swing: 0 };
   group.position.set(x, 0, z);
-  ctx.scene.add(group);
-  const enemy = { mesh: group, health: 60, state: "idle", hitTimer: 0 };
-  ctx.combat.enemies.push(enemy);
+  G.enemies.push(enemy);
   return enemy;
 }
 
-export function updateEnemies(ctx, dt) {
-  const player = ctx.player;
-  for (let i = ctx.combat.enemies.length - 1; i >= 0; i--) {
-    const enemy = ctx.combat.enemies[i];
-    const dx = player.mesh.position.x - enemy.mesh.position.x;
-    const dz = player.mesh.position.z - enemy.mesh.position.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance < 14 && distance > 1.6) {
-      enemy.mesh.position.x += (dx / distance) * 3.2 * dt;
-      enemy.mesh.position.z += (dz / distance) * 3.2 * dt;
-      enemy.mesh.rotation.y = Math.atan2(dx, dz);
-    } else if (distance <= 1.6) {
-      // The rival lands a hit every second he stays in range.
-      enemy.state = "attacking";
-      if (!enemy.hitTimer || enemy.hitTimer <= 0) {
-        player.health = Math.max(0, player.health - 5);
-        enemy.hitTimer = 1;
-        ctx.hud.showToast("Rival crew member hit you!");
-      } else {
-        enemy.hitTimer -= dt;
+export function updateCombat(G, dt) {
+  const p = G.player;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    const d = Math.hypot(p.x - e.x, p.z - e.z);
+    if (d > 1.6) {
+      const mx = (p.x - e.x) / d;
+      const mz = (p.z - e.z) / d;
+      e.x += mx * 3.4 * dt;
+      e.z += mz * 3.4 * dt;
+      e.group.position.set(e.x, 0, e.z);
+      e.group.rotation.y = Math.atan2(mx, mz);
+    } else {
+      e.swing -= dt;
+      if (e.swing <= 0) {
+        e.swing = 1.1;
+        p.health = Math.max(0, p.health - 6);
+        G.hud.showToast(G, 'A rival landed a hit — health dropping!');
       }
     }
-    if (enemy.health <= 0) {
-      ctx.scene.remove(enemy.mesh);
-      ctx.combat.enemies.splice(i, 1);
-      ctx.player.cash += 50;
-      ctx.player.rep = Math.min(100, (ctx.player.rep || 0) + 1);
-      ctx.hud.showToast("Rival down. +$50 · +1 rep");
+  }
+  for (let i = G.tracers.length - 1; i >= 0; i--) {
+    const t = G.tracers[i];
+    t.life -= dt;
+    if (t.life <= 0) {
+      G.scene.remove(t.line);
+      t.line.geometry.dispose();
+      G.tracers.splice(i, 1);
     }
   }
-}
-
-// Punch: short range, no ammo, no wanted level unless a cop sees it.
-export function tryPunch(ctx) {
-  const combat = ctx.combat;
-  if (combat.punchTimer > 0 || ctx.player.inCar) return;
-  combat.punchTimer = 0.45;
-  ctx.audio.playPunch();
-  for (const enemy of combat.enemies) {
-    const distance = Math.hypot(
-      enemy.mesh.position.x - ctx.player.mesh.position.x,
-      enemy.mesh.position.z - ctx.player.mesh.position.z
-    );
-    if (distance < 2.6) {
-      enemy.health -= 25;
-      addCrashSparks(ctx, enemy.mesh.position.x, 1.4, enemy.mesh.position.z);
-    }
-  }
-  for (const ped of ctx.pedestrians) {
-    const distance = Math.hypot(
-      ped.mesh.position.x - ctx.player.mesh.position.x,
-      ped.mesh.position.z - ctx.player.mesh.position.z
-    );
-    if (distance < 2.4) {
-      ped.fleeing = true;
-      raiseWanted(ctx, 1, "Assault on a pedestrian");
-    }
-  }
-}
-
-// Shoot: rays from the camera through the crosshair; the shotgun fires a
-// spread of pellets, the SMG fires while the mouse is held down.
-export function tryShoot(ctx) {
-  const combat = ctx.combat;
-  const player = ctx.player;
-  const weapon = WEAPONS[player.weapon] || WEAPONS.pistol;
-  if (combat.shootCooldown > 0 || player.inCar) return;
-  if ((player.ammoByWeapon[player.weapon] || 0) <= 0) {
-    ctx.hud.showToast("Out of ammo — buy more at Ammu-Nation");
-    combat.shootCooldown = 0.4;
-    return;
-  }
-  combat.shootCooldown = weapon.cooldown;
-  player.ammoByWeapon[player.weapon] -= 1;
-  player.ammo = player.ammoByWeapon[player.weapon];
-  ctx.audio.playShot(player.weapon);
-  const origin = ctx.camera.position.clone();
-  const direction = new THREE.Vector3();
-  ctx.camera.getWorldDirection(direction);
-  const flashPos = origin.clone().add(direction.clone().multiplyScalar(1.2));
-  flashPos.y -= 0.3;
-  combat.flash.position.copy(flashPos);
-  combat.flash.visible = true;
-  combat.flashTimer = 0.07;
-  const targets = [];
-  for (const enemy of combat.enemies) targets.push(enemy.mesh);
-  for (const ped of ctx.pedestrians) targets.push(ped.mesh);
-  for (const car of ctx.cars) targets.push(car.mesh);
-  for (let p = 0; p < weapon.pellets; p++) {
-    const dir = direction.clone();
-    dir.x += (Math.random() - 0.5) * weapon.spread * 2;
-    dir.y += (Math.random() - 0.5) * weapon.spread * 2;
-    dir.normalize();
-    const raycaster = new THREE.Raycaster(origin, dir, 0, 60);
-    const hits = raycaster.intersectObjects(targets, true);
-    if (hits.length > 0) {
-      const hitPoint = hits[0].point;
-      addCrashSparks(ctx, hitPoint.x, hitPoint.y, hitPoint.z);
-      combat.tracer.geometry.setFromPoints([flashPos, hitPoint]);
-      combat.tracer.visible = true;
-      let hitObject = hits[0].object;
-      while (hitObject.parent && hitObject.parent !== ctx.scene) hitObject = hitObject.parent;
-      for (const enemy of combat.enemies) {
-        if (enemy.mesh === hitObject) enemy.health -= weapon.damage;
+  if (p.health <= 0 && !G.liveShot && !G.busted) {
+    G.busted = true;
+    setTimeout(() => {
+      if (G.busted) {
+        p.health = 100;
+        p.cash = Math.max(0, p.cash - 200);
+        p.x = -55;
+        p.z = 55;
+        p.inCar = false;
+        p.group.visible = true;
+        p.group.position.set(p.x, 0, p.z);
+        G.busted = false;
+        G.hud.showToast(G, 'You woke up at the beach — the crew took $200.');
       }
-      for (const ped of ctx.pedestrians) {
-        if (ped.mesh === hitObject) {
-          ped.fleeing = true;
-          raiseWanted(ctx, 1, "Shots fired in Solmar City");
-        }
-      }
-      for (const car of ctx.cars) {
-        if (car.mesh === hitObject) {
-          car.health -= 20;
-          if (car.health <= 0) addCrashSparks(ctx, car.mesh.position.x, 1, car.mesh.position.z);
-        }
-      }
-    }
+    }, 1200);
   }
 }

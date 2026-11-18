@@ -1,80 +1,42 @@
-// input.js — keyboard and mouse state for walking, driving, combat, radio
-// and menus. Keys are read by code, so WASD, arrows, numbers and letters
-// all land here first.
-export function createInputHandler(canvas) {
-  const keys = {};
-  const pressed = {};
-  let mouseDown = false;
-  let mouseClicked = false;
+// Keyboard and mouse state. Movement keys are read every frame; action
+// keys queue one press event each so E, R, C, P, L, M and the digit keys
+// fire exactly once per tap.
+const MOVE = {
+  KeyW: 'forward', ArrowUp: 'forward',
+  KeyS: 'back', ArrowDown: 'back',
+  KeyA: 'left', ArrowLeft: 'left',
+  KeyD: 'right', ArrowRight: 'right',
+  Space: 'handbrake',
+  KeyN: 'nos',
+};
 
-  function onKeyDown(event) {
-    const code = event.code;
-    if (!keys[code]) pressed[code] = true;
-    keys[code] = true;
-    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(code)) {
-      event.preventDefault();
-    }
-  }
-
-  function onKeyUp(event) {
-    keys[event.code] = false;
-  }
-
-  function onMouseDown(event) {
-    if (event.button === 0) {
-      mouseDown = true;
-      mouseClicked = true;
-    }
-  }
-
-  function onMouseUp(event) {
-    if (event.button === 0) mouseDown = false;
-  }
-
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-  canvas.addEventListener("mousedown", onMouseDown);
-  window.addEventListener("mouseup", onMouseUp);
-
-  return {
-    keys,
-    // True only on the single frame the key went down.
-    wasPressed(code) {
-      return !!pressed[code];
-    },
-    isDown(code) {
-      return !!keys[code];
-    },
-    mouseClicked() {
-      return mouseClicked;
-    },
-    mouseDown() {
-      return mouseDown;
-    },
-    // True when any of the given codes went down on this frame.
-    anyPressed(codes) {
-      return codes.some((code) => !!pressed[code]);
-    },
-    // Drop every pending press without waiting for the frame to end — used
-    // when a menu opens and the key that opened it must not leak through.
-    clearPressed() {
-      for (const code of Object.keys(pressed)) pressed[code] = false;
-      mouseClicked = false;
-    },
-    // Call once per frame after the game has read the input.
-    endFrame() {
-      for (const code of Object.keys(pressed)) pressed[code] = false;
-      mouseClicked = false;
-    },
-    // Steering and throttle in the range -1..1, shared by walking and driving.
-    moveAxes() {
-      let forward = 0;
-      let strafe = 0;
-      if (keys.KeyW || keys.ArrowUp) forward += 1;
-      if (keys.KeyS || keys.ArrowDown) forward -= 1;
-      if (keys.KeyA || keys.ArrowLeft) strafe -= 1;
-      if (keys.KeyD || keys.ArrowRight) strafe += 1;
-      return { forward, strafe };
-    },
+export function createInput() {
+  const input = {
+    keys: new Set(),
+    pressed: [],
+    mouseDown: false,
+    mouseClicked: false,
+    get forward() { return input.keys.has('KeyW') || input.keys.has('ArrowUp'); },
+    get back() { return input.keys.has('KeyS') || input.keys.has('ArrowDown'); },
+    get left() { return input.keys.has('KeyA') || input.keys.has('ArrowLeft'); },
+    get right() { return input.keys.has('KeyD') || input.keys.has('ArrowRight'); },
+    get handbrake() { return input.keys.has('Space'); },
+    get nos() { return input.keys.has('KeyN'); },
   };
+  window.addEventListener('keydown', (e) => {
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+    if (!e.repeat) {
+      input.pressed.push(e.code);
+      input.keys.add(e.code);
+    }
+  });
+  window.addEventListener('keyup', (e) => input.keys.delete(e.code));
+  window.addEventListener('blur', () => input.keys.clear());
+  window.addEventListener('mousedown', (e) => {
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+    input.mouseDown = true;
+    input.mouseClicked = true;
+  });
+  window.addEventListener('mouseup', () => { input.mouseDown = false; });
+  return input;
 }

@@ -1,25 +1,16 @@
-// serve.ts — a tiny static server for game/ (Node 22, standard library only).
-// Run `node serve.ts` and play at http://localhost:8080; pass --port 9000 or
-// --host 0.0.0.0 to change where it listens. It sends the MIME types a browser
-// game needs, refuses any path outside game/, logs each request, and otherwise
-// does nothing clever: a development convenience, not a web server for the net.
-import { createReadStream, statSync } from 'node:fs';
+// SOLMAR dev server: serves game/ over HTTP so the game can be played and
+// screenshot in a desktop browser. Usage: node serve.ts --port 8080
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join, extname, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const root = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
 const args = process.argv.slice(2);
-function flagValue(name, fallback) {
-  const at = args.indexOf(name);
-  if (at === -1 || at + 1 >= args.length) return fallback;
-  return args[at + 1];
-}
-const wantedPort = Number(flagValue('--port', '8080'));
-const port = Number.isInteger(wantedPort) && wantedPort > 0 && wantedPort < 65536 ? wantedPort : 8080;
-const host = flagValue('--host', '127.0.0.1');
+const portIndex = args.indexOf('--port');
+const port = portIndex >= 0 ? Number(args[portIndex + 1]) || 8080 : 8080;
 
-const MIME: Record<string, string> = {
+const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -29,51 +20,30 @@ const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
-  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'model/gltf+json',
-  '.bin': 'application/octet-stream',
-  '.wasm': 'application/wasm',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.txt': 'text/plain; charset=utf-8',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname: string;
+const server = createServer(async (req, res) => {
   try {
-    pathname = decodeURIComponent(url.pathname);
-  } catch {
-    response.writeHead(400).end('bad request');
-    return;
+    const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
+    let rel = decodeURIComponent(url.pathname);
+    if (rel === '/') rel = '/index.html';
+    const file = normalize(join(root, rel));
+    if (!file.startsWith(root + sep) && file !== root) {
+      res.writeHead(403);
+      res.end('forbidden');
+      return;
+    }
+    const bytes = await readFile(file);
+    res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
+    res.end(bytes);
+  } catch (e) {
+    res.writeHead(404);
+    res.end('not found');
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size: number;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  console.log(`${request.method} ${pathname} -> 200 (${size} bytes)`);
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, host, () => {
-  console.log(`game/ is on http://${host}:${port}`);
+});
+
+server.listen(port, '127.0.0.1', () => {
+  console.log(`SOLMAR dev server: http://127.0.0.1:${port}/`);
 });

@@ -1,132 +1,173 @@
-// player.js — Rio Vega on foot: walking, running, entering and leaving cars,
-// and the loadout he carries: cash, health, wanted level, crew rep, weapons.
-import * as THREE from "three";
-import { resolveCityCollision } from "./city.js";
-import { nearestStealableCar } from "./vehicles.js";
-import { raiseWanted } from "./police.js";
+// The player on foot: movement, entering and leaving cars, punching, and
+// the wallet of stats (cash, reputation, health, weapons) the HUD reads.
+import * as THREE from 'three';
 
-export function createPlayer(scene, spawn) {
+export const START_CASH = 2450;
+export const START_REP = 62;
+
+export function rankFor(rep) {
+  if (rep >= 90) return 'KING OF THE COAST';
+  if (rep >= 75) return 'CREW CAPTAIN';
+  if (rep >= 55) return 'CREW MEMBER';
+  if (rep >= 30) return 'STREET RUNNER';
+  return 'ROOKIE';
+}
+
+export function createPlayer(G) {
   const group = new THREE.Group();
-  // Rio: dark jacket, jeans, gold cap — a readable silhouette at a distance.
-  const jacketMat = new THREE.MeshLambertMaterial({ color: 0x2a4a6b });
-  const jeansMat = new THREE.MeshLambertMaterial({ color: 0x2c3550 });
-  const skinMat = new THREE.MeshLambertMaterial({ color: 0xd9a066 });
-  const capMat = new THREE.MeshLambertMaterial({ color: 0xffd23e });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.0, 0.45), jacketMat);
-  torso.position.y = 1.15;
-  group.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), skinMat);
-  head.position.y = 1.95;
+  const jacket = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 0.85, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x2a6b8a })
+  );
+  jacket.position.y = 1.15;
+  group.add(jacket);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.26, 12, 10),
+    new THREE.MeshLambertMaterial({ color: 0xd9a986 })
+  );
+  head.position.y = 1.8;
   group.add(head);
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.16, 0.56), capMat);
-  cap.position.y = 2.24;
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.27, 0.29, 0.12, 12),
+    new THREE.MeshLambertMaterial({ color: 0xe8a13d })
+  );
+  cap.position.y = 2.0;
   group.add(cap);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.32), jeansMat);
-  legL.position.set(-0.22, 0.42, 0);
-  legL.name = "leg-left";
-  group.add(legL);
-  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.32), jeansMat);
-  legR.position.set(0.22, 0.42, 0);
-  legR.name = "leg-right";
-  group.add(legR);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.85, 0.26), jacketMat);
-  armL.position.set(-0.58, 1.15, 0);
-  armL.name = "arm-left";
-  group.add(armL);
-  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.85, 0.26), jacketMat);
-  armR.position.set(0.58, 1.15, 0);
-  armR.name = "arm-right";
-  group.add(armR);
-  group.position.set(spawn.x, 0, spawn.z);
-  scene.add(group);
-  return {
-    mesh: group,
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
+  for (const s of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.7, 0.3), legMat);
+    leg.position.set(s * 0.18, 0.35, 0);
+    group.add(leg);
+  }
+  G.scene.add(group);
+  const player = {
+    group,
+    x: -55,
+    z: 55,
     heading: 0,
-    walkSpeed: 7,
-    runSpeed: 11,
+    camHeading: 0,
+    walkSpeed: 6.5,
+    inCar: false,
+    car: null,
     health: 100,
-    cash: 0,
-    rep: 0,
-    wanted: 0,
-    inCar: null,
-    ammo: 24,
-    weapon: "pistol",
-    weapons: { pistol: true, smg: false, shotgun: false },
-    ammoByWeapon: { pistol: 24, smg: 0, shotgun: 0 },
-    hasPackage: false,
-    walkCycle: 0,
+    cash: START_CASH,
+    rep: START_REP,
+    weapons: {
+      pistol: { owned: true, ammo: 240 },
+      smg: { owned: false, ammo: 0 },
+      shotgun: { owned: false, ammo: 0 },
+    },
+    weapon: 'pistol',
+    punchCooldown: 0,
   };
+  group.position.set(player.x, 0, player.z);
+  return player;
 }
 
-// Walk with WASD relative to the camera heading; Shift runs, arms swing.
-export function updatePlayerOnFoot(ctx, dt) {
-  const player = ctx.player;
-  const input = ctx.input;
-  const axes = input.moveAxes();
-  const running = input.isDown("ShiftLeft") || input.isDown("ShiftRight");
-  const speed = running ? player.runSpeed : player.walkSpeed;
-  if (axes.forward !== 0 || axes.strafe !== 0) {
-    const cameraHeading = ctx.cameraHeading;
-    const forwardX = Math.sin(cameraHeading);
-    const forwardZ = Math.cos(cameraHeading);
-    const rightX = Math.cos(cameraHeading);
-    const rightZ = -Math.sin(cameraHeading);
-    let moveX = forwardX * axes.forward + rightX * axes.strafe;
-    let moveZ = forwardZ * axes.forward + rightZ * axes.strafe;
-    const length = Math.hypot(moveX, moveZ) || 1;
-    moveX /= length;
-    moveZ /= length;
-    player.heading = Math.atan2(moveX, moveZ);
-    let nextX = player.mesh.position.x + moveX * speed * dt;
-    let nextZ = player.mesh.position.z + moveZ * speed * dt;
-    const resolved = resolveCityCollision(ctx.city, nextX, nextZ, 0.7);
-    nextX = resolved.x;
-    nextZ = resolved.z;
-    player.mesh.position.x = Math.max(-198, Math.min(198, nextX));
-    player.mesh.position.z = Math.max(-198, Math.min(198, nextZ));
-    player.walkCycle += dt * speed * 1.6;
-    const swing = Math.sin(player.walkCycle) * 0.45;
-    const legL = player.mesh.getObjectByName("leg-left");
-    const legR = player.mesh.getObjectByName("leg-right");
-    if (legL) legL.rotation.x = swing;
-    if (legR) legR.rotation.x = -swing;
-    const armL = player.mesh.getObjectByName("arm-left");
-    const armR = player.mesh.getObjectByName("arm-right");
-    if (armL) armL.rotation.x = -swing;
-    if (armR) armR.rotation.x = swing;
-  }
-  player.mesh.rotation.y = player.heading;
-  player.mesh.visible = true;
+export function updatePlayer(G, dt) {
+  const p = G.player;
+  if (p.inCar || G.shopOpen || !G.started || G.paused) return;
+  const input = G.input;
+  const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
+  const strafe = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  if (fwd === 0 && strafe === 0) return;
+  // Camera-relative movement against the FROZEN on-foot camera heading:
+  // the camera never chases the player's heading, so W+D walks a straight
+  // diagonal instead of spiralling.
+  const ch = p.camHeading;
+  const fx = Math.sin(ch);
+  const fz = Math.cos(ch);
+  const rx = Math.cos(ch);
+  const rz = -Math.sin(ch);
+  let mx = fx * fwd + rx * strafe;
+  let mz = fz * fwd + rz * strafe;
+  const len = Math.hypot(mx, mz) || 1;
+  mx /= len;
+  mz /= len;
+  const nx = p.x + mx * p.walkSpeed * dt;
+  const nz = p.z + mz * p.walkSpeed * dt;
+  const fixed = G.city.collide(nx, nz, 0.6);
+  p.x = fixed.x;
+  p.z = fixed.z;
+  p.heading = Math.atan2(mx, mz);
+  p.group.position.set(p.x, 0, p.z);
+  p.group.rotation.y = p.heading;
+  // Walk swing on the legs, purely cosmetic.
+  p.group.children.forEach((child, i) => {
+    if (i >= 3) child.position.z = Math.sin(G.time * 9 + i) * 0.12;
+  });
 }
 
-// E near a car steals it (and raises the wanted level); E in a car steps out.
-export function tryEnterOrExitCar(ctx) {
-  const player = ctx.player;
-  if (player.inCar) {
-    const car = player.inCar;
-    car.speed = 0;
-    player.inCar = null;
-    const sideX = Math.cos(car.heading);
-    const sideZ = -Math.sin(car.heading);
-    player.mesh.position.set(
-      car.mesh.position.x + sideX * 2.6,
-      0,
-      car.mesh.position.z + sideZ * 2.6
-    );
-    player.mesh.visible = true;
-    ctx.hud.showToast("Out of the " + car.name);
-    return;
+export function nearestCar(G, maxDist) {
+  let best = null;
+  let bestD = maxDist;
+  for (const car of G.cars) {
+    const d = Math.hypot(car.x - G.player.x, car.z - G.player.z);
+    if (d < bestD) {
+      bestD = d;
+      best = car;
+    }
   }
-  const car = nearestStealableCar(ctx, 6.5);
-  if (!car) {
-    ctx.hud.showToast("No car close enough — walk up to one and press E");
-    return;
-  }
-  player.inCar = car;
+  return best;
+}
+
+export function enterCar(G, car) {
+  const p = G.player;
+  p.inCar = true;
+  p.car = car;
+  car.traffic = false;
   car.parked = false;
-  car.stolen = true;
-  player.mesh.visible = false;
-  raiseWanted(ctx, 1, "Grand theft auto — " + car.name);
-  ctx.hud.showToast("Stole the " + car.name + "! The police are watching.");
-  ctx.audio.playSteal();
+  p.group.visible = false;
+  p.x = car.x;
+  p.z = car.z;
+  p.heading = car.heading;
+  G.hud.showToast(G, `Stole the ${car.name} — drive!`);
+}
+
+export function exitCar(G) {
+  const p = G.player;
+  const car = p.car;
+  if (!car) return;
+  p.inCar = false;
+  p.car = null;
+  const f = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
+  p.x = car.x - f.z * 2.4;
+  p.z = car.z + f.x * 2.4;
+  p.camHeading = car.heading;
+  p.group.visible = true;
+  p.group.position.set(p.x, 0, p.z);
+  car.speed = 0;
+}
+
+export function punch(G) {
+  const p = G.player;
+  if (p.punchCooldown > 0 || p.inCar) return;
+  p.punchCooldown = 0.45;
+  let hit = null;
+  let bestD = 2.4;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    const d = Math.hypot(e.x - p.x, e.z - p.z);
+    if (d < bestD) {
+      bestD = d;
+      hit = e;
+    }
+  }
+  if (hit) {
+    hit.health -= 25;
+    G.hud.showToast(G, 'You landed a punch!');
+    if (hit.health <= 0) killEnemy(G, hit);
+  }
+}
+
+export function killEnemy(G, enemy) {
+  enemy.dead = true;
+  enemy.group.rotation.x = -Math.PI / 2;
+  enemy.group.position.y = 0.4;
+  G.player.cash += 120;
+  G.hud.showToast(G, 'Rival down — took $120 off him.');
+}
+
+export function tickPlayer(G, dt) {
+  if (G.player.punchCooldown > 0) G.player.punchCooldown -= dt;
 }
