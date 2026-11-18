@@ -6,158 +6,317 @@
 <link rel="icon" href="data:,">
 <title>SOLMAR — Open-World Crime Game</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0f14; font-family: Arial, Helvetica, sans-serif; color: #fff; }
-  #game-canvas { position: fixed; inset: 0; display: block; }
-  .panel { position: fixed; background: rgba(12, 14, 26, 0.72); border: 1px solid rgba(255, 180, 90, 0.45); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(2px); z-index: 5; }
-  #mission-panel { top: 14px; left: 14px; width: 330px; }
-  #mission-panel h2 { font-size: 19px; letter-spacing: 1px; color: #ffd94d; }
-  #mission-stage { font-size: 11px; color: #ffb46b; letter-spacing: 1px; margin: 2px 0 4px; }
-  #mission-objective { font-size: 13px; line-height: 1.35; color: #f2ead8; }
-  #stats-panel { top: 14px; right: 14px; width: 210px; text-align: right; }
-  #wanted-stars { font-size: 22px; color: #ffd94d; letter-spacing: 3px; text-shadow: 0 0 8px rgba(255, 60, 60, 0.8); }
-  #cash { font-size: 22px; font-weight: bold; color: #3ddc5a; margin: 2px 0 6px; }
-  .bar-label { font-size: 10px; letter-spacing: 1px; color: #ffb46b; display: flex; justify-content: space-between; }
-  .bar { height: 9px; background: rgba(255,255,255,0.18); border-radius: 5px; overflow: hidden; margin: 2px 0 6px; }
-  .bar > div { height: 100%; width: 100%; border-radius: 5px; }
-  #health-fill { background: #3ddc5a; }
-  #rep-fill { background: linear-gradient(90deg, #ff8a3d, #ffd94d); }
-  #minimap-wrap { position: fixed; top: 168px; right: 14px; width: 170px; height: 170px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 180, 90, 0.7); box-shadow: 0 0 18px rgba(0,0,0,0.6); z-index: 5; background: #0e1a24; }
-  #minimap { width: 170px; height: 170px; display: block; }
-  #roster-panel { top: 352px; right: 14px; width: 210px; }
-  #roster-panel h3 { font-size: 11px; letter-spacing: 2px; color: #ff8a8a; margin-bottom: 5px; }
-  .roster-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
-  .roster-row b { color: #fff; }
-  .roster-row span { color: #ffd94d; }
-  .roster-row em { font-style: normal; color: #ff6a6a; font-size: 10px; letter-spacing: 1px; }
-  #weapon-slots { left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; background: none; border: none; padding: 0; }
-  .slot { width: 190px; background: rgba(12, 14, 26, 0.72); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; }
-  .slot.active { border-color: #ffd94d; box-shadow: 0 0 10px rgba(255, 217, 77, 0.5); }
-  .slot.locked { opacity: 0.55; }
-  .slot .slot-key { font-size: 11px; color: #ffb46b; margin-right: 6px; }
-  .slot .slot-name { font-size: 14px; font-weight: bold; flex: 1; }
-  .slot .slot-ammo { font-size: 11px; color: #3ddc5a; }
-  .slot.locked .slot-ammo { color: #ff8a8a; }
-  #speed-panel { right: 14px; bottom: 14px; text-align: right; min-width: 170px; }
-  #speed { font-size: 44px; font-weight: bold; line-height: 1; color: #fff; text-shadow: 0 0 12px rgba(255, 140, 60, 0.7); }
-  #speed-unit { font-size: 13px; color: #ffb46b; }
-  #car-name { font-size: 13px; color: #ffd94d; letter-spacing: 1px; margin-top: 2px; }
-  #nos-label { font-size: 10px; letter-spacing: 1px; color: #3db8ff; margin-top: 5px; }
-  #bottom-centre { left: 50%; transform: translateX(-50%); bottom: 14px; width: 480px; text-align: center; background: none; border: none; padding: 0; }
-  #radio-line { background: rgba(12, 14, 26, 0.72); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-bottom: 6px; }
-  #radio-station { color: #ffd94d; font-weight: bold; }
-  #radio-track { color: #f2ead8; }
-  #controls-hint { font-size: 11px; color: rgba(255,255,255,0.75); background: rgba(12, 14, 26, 0.6); border-radius: 6px; padding: 4px 8px; display: inline-block; }
-  #dialogue { position: fixed; left: 50%; transform: translateX(-50%); bottom: 108px; width: 520px; background: rgba(12, 14, 26, 0.82); border: 1px solid rgba(255, 217, 77, 0.6); border-left: 5px solid #ffd94d; border-radius: 8px; padding: 10px 14px; z-index: 5; display: none; }
-  #dialogue-speaker { font-size: 12px; letter-spacing: 2px; color: #ffd94d; margin-bottom: 3px; }
-  #dialogue-text { font-size: 14px; line-height: 1.4; color: #fff; }
-  #toast { position: fixed; top: 132px; left: 50%; transform: translateX(-50%); background: rgba(12, 14, 26, 0.85); border: 1px solid rgba(61, 220, 90, 0.6); color: #fff; border-radius: 8px; padding: 8px 16px; font-size: 13px; z-index: 6; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-  #crosshair { position: fixed; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid rgba(255,255,255,0.85); border-radius: 50%; z-index: 4; pointer-events: none; }
-  .overlay { position: fixed; inset: 0; background: linear-gradient(160deg, rgba(40,10,30,0.88), rgba(20,10,40,0.9)); display: flex; align-items: center; justify-content: center; z-index: 20; }
-  .overlay-card { width: 560px; max-width: 92vw; text-align: center; padding: 34px 30px; background: rgba(12, 14, 26, 0.85); border: 1px solid rgba(255, 180, 90, 0.6); border-radius: 16px; }
-  .overlay-card h1 { font-size: 52px; letter-spacing: 6px; color: #ffd94d; text-shadow: 0 0 24px rgba(255, 140, 60, 0.8); }
-  .overlay-card h2 { font-size: 15px; letter-spacing: 3px; color: #ffb46b; margin: 6px 0 16px; font-weight: normal; }
-  .overlay-card p { font-size: 14px; line-height: 1.55; color: #f2ead8; margin-bottom: 14px; }
-  .overlay-card .keys { font-size: 12.5px; line-height: 1.9; color: #cfc8b8; margin-bottom: 20px; }
-  .overlay-card .keys b { color: #ffd94d; }
-  .big-btn { font-size: 19px; font-weight: bold; letter-spacing: 2px; color: #1a0f14; background: linear-gradient(90deg, #ffd94d, #ff8a3d); border: none; border-radius: 10px; padding: 14px 42px; cursor: pointer; }
-  .big-btn:hover { filter: brightness(1.1); }
-  #shop-overlay { display: none; }
-  #shop-overlay .overlay-card { text-align: left; width: 520px; }
-  #shop-title { font-size: 30px; letter-spacing: 2px; color: #ffd94d; }
-  #shop-subtitle { font-size: 13px; color: #ffb46b; margin: 4px 0 2px; }
-  #shop-cash { font-size: 16px; font-weight: bold; color: #3ddc5a; margin: 6px 0 12px; }
-  .shop-item { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .shop-item b { font-size: 15px; min-width: 96px; }
-  .shop-item span { font-size: 12px; color: #cfc8b8; flex: 1; }
-  .shop-item em { font-style: normal; color: #ffd94d; font-weight: bold; }
-  .shop-item button { background: #3ddc5a; color: #0a1a0e; border: none; border-radius: 6px; padding: 8px 14px; font-weight: bold; cursor: pointer; }
-  .shop-item button:disabled { background: #555; color: #aaa; cursor: default; }
-  #shop-close-btn { margin-top: 8px; width: 100%; }
-  #pause-overlay { display: none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0f2e; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .glass { background: rgba(16, 12, 28, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45); color: #fff; }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  #loading-note { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffd27a; font-size: 18px; z-index: 4; text-shadow: 0 2px 8px #000; }
+  #hint { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.75); font-size: 12px; z-index: 6; text-shadow: 0 1px 4px #000; }
+  #crosshair { position: fixed; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 6; display: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 4px #000; }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { top: 8px; left: 0; width: 18px; height: 2px; }
+
+  /* Mission panel, top left */
+  #mission-panel { position: absolute; top: 14px; left: 14px; width: 330px; padding: 12px 14px; }
+  #mission-panel .row1 { display: flex; justify-content: space-between; align-items: center; }
+  #mission-chapter { background: #ffc21a; color: #1a1a1a; font-weight: 800; font-size: 12px; padding: 3px 8px; border-radius: 6px; }
+  #mission-title { font-weight: 800; font-size: 17px; letter-spacing: 0.5px; }
+  #mission-timer { color: #ffd27a; font-weight: 700; font-size: 15px; }
+  #mission-brief { font-size: 14px; font-weight: 700; margin-top: 6px; line-height: 1.3; }
+  #mission-hint { font-size: 12px; color: #b8c4d8; margin-top: 2px; }
+  #mission-stage { margin-top: 8px; font-size: 12px; color: #ffd27a; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .seg { display: inline-block; width: 34px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.25); }
+  .seg.done { background: #ffc21a; }
+  #mission-next { margin-top: 6px; font-size: 12px; color: #ffd27a; font-weight: 700; }
+
+  /* PD roster, left below mission */
+  #roster { position: absolute; top: 196px; left: 14px; width: 330px; padding: 10px 12px; display: none; }
+  #roster .roster-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 800; letter-spacing: 0.5px; color: #cfe0ff; margin-bottom: 6px; }
+  .roster-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .roster-name { font-weight: 700; flex: 1; }
+  .roster-dist { color: #b8c4d8; }
+  .pill { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 20px; }
+  .pill-red { background: #ff3b30; color: #fff; }
+  .pill-amber { background: #ff9f0a; color: #1a1a1a; }
+  .pill-blue { background: #0a84ff; color: #fff; }
+  .roster-more { font-size: 11px; color: #b8c4d8; margin-top: 4px; }
+
+  /* Top right: day, cash, stars, heat */
+  #top-right { position: absolute; top: 14px; right: 14px; text-align: right; padding: 10px 14px; min-width: 190px; }
+  #day-time { font-size: 12px; color: #cfe0ff; font-weight: 700; letter-spacing: 1px; }
+  #cash { font-size: 34px; font-weight: 800; color: #4ade80; line-height: 1.1; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+  .stars { font-size: 19px; letter-spacing: 3px; color: #ffd27a; }
+  .stars.hot { color: #ff3b30; }
+  .heat-quiet { font-size: 11px; font-weight: 800; color: #7ee2a0; margin-top: 2px; }
+  .heat-warm { font-size: 11px; font-weight: 800; color: #ffb340; margin-top: 2px; }
+  .heat-hot { font-size: 11px; font-weight: 800; color: #ff5a4a; margin-top: 2px; }
+
+  /* Weapon slots, right middle */
+  #weapons { position: absolute; top: 168px; right: 14px; display: flex; gap: 8px; }
+  .weapon-slot { width: 62px; padding: 6px 4px 5px; text-align: center; background: rgba(16,12,28,0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; color: #fff; }
+  .weapon-slot.active { border-color: #ff2e88; box-shadow: 0 0 0 2px rgba(255,46,136,0.5); }
+  .weapon-slot.locked { opacity: 0.55; }
+  .ws-num { font-size: 10px; color: #b8c4d8; text-align: left; }
+  .ws-icon { font-size: 20px; line-height: 1.2; }
+  .ws-ammo { font-size: 11px; font-weight: 700; }
+  .ws-name { font-size: 9px; color: #b8c4d8; margin-top: 1px; }
+
+  /* Radio, right below weapons */
+  #radio { position: absolute; top: 262px; right: 14px; width: 250px; padding: 9px 12px; border-left: 3px solid #ff2e88; }
+  #radio-station { font-size: 13px; font-weight: 800; }
+  #radio-track { font-size: 12px; color: #b8c4d8; }
+  .eq { display: inline-block; vertical-align: middle; margin-left: 6px; }
+  .eq i { display: inline-block; width: 3px; background: #ff2e88; margin-right: 2px; animation: eq 0.7s infinite ease-in-out; }
+  .eq i:nth-child(1) { height: 8px; } .eq i:nth-child(2) { height: 14px; animation-delay: 0.15s; } .eq i:nth-child(3) { height: 10px; animation-delay: 0.3s; }
+  @keyframes eq { 0%, 100% { transform: scaleY(0.6); } 50% { transform: scaleY(1.2); } }
+
+  /* Bottom left: health/respect + minimap */
+  #vitals { position: absolute; left: 14px; bottom: 196px; width: 190px; padding: 8px 12px; font-size: 11px; font-weight: 800; }
+  .vital-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .vital-row label { width: 52px; color: #cfe0ff; }
+  .bar { flex: 1; height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; }
+  #health-bar { background: #4ade80; width: 100%; }
+  #rep-bar { background: #ffc21a; width: 62%; }
+  .vital-num { width: 26px; text-align: right; }
+  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; text-align: center; }
+  #minimap { width: 168px; height: 168px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); box-shadow: 0 4px 24px rgba(0,0,0,0.5); background: #1a3a55; }
+  #minimap-label { display: inline-block; margin-top: 5px; background: #ffc21a; color: #1a1a1a; font-size: 11px; font-weight: 800; padding: 2px 10px; border-radius: 20px; }
+
+  /* Dialogue, bottom centre */
+  #dialogue { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: 520px; max-width: 46vw; padding: 10px 14px; display: none; align-items: center; gap: 12px; }
+  #dialogue-portrait { flex: none; }
+  #dialogue-name { font-weight: 800; font-size: 14px; }
+  #dialogue-role { color: #ff7ab0; font-size: 11px; font-weight: 700; margin-left: 6px; }
+  #dialogue-text { font-size: 13px; line-height: 1.35; margin-top: 2px; }
+
+  /* Speed cluster, bottom right */
+  #speedo { position: absolute; right: 14px; bottom: 14px; width: 240px; padding: 10px 14px; text-align: right; }
+  #speed-car { font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+  .cond-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .cond-row label { font-size: 10px; color: #b8c4d8; font-weight: 700; }
+  .cond-row .bar { height: 6px; }
+  #speed-condition { background: #4ade80; width: 100%; }
+  #speed-nos { background: #2ec8ff; width: 100%; }
+  #speed-num { font-size: 52px; font-weight: 800; line-height: 1; display: inline-block; }
+  .kmh { font-size: 13px; font-weight: 700; color: #b8c4d8; }
+  #speed-gear { display: inline-block; background: rgba(255,255,255,0.16); border-radius: 6px; padding: 3px 8px; font-weight: 800; font-size: 13px; margin-left: 8px; }
+
+  /* Toast */
+  #toast { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); background: rgba(16,12,28,0.85); color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; opacity: 0; transition: opacity 0.25s; white-space: nowrap; border: 1px solid rgba(255,255,255,0.15); }
+
+  /* Menu / pause / shop overlays */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(43,26,94,0.88), rgba(255,46,136,0.55) 60%, rgba(255,122,60,0.75)); }
+
+  /* Title screen: dark on the left for the text, clear on the right
+     so the staged car, Rio and the sunset street show through. */
+  #menu { background: linear-gradient(90deg, rgba(10,6,20,0.90) 0%, rgba(10,6,20,0.55) 42%, rgba(10,6,20,0.06) 78%); justify-content: flex-start; }
+  .menu-wrap { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; max-width: 1240px; padding: 40px 48px; color: #fff; text-align: left; }
+  .menu-left { width: 560px; }
+  .menu-logo { font-size: 104px; font-weight: 900; letter-spacing: 4px; line-height: 0.95; background: linear-gradient(180deg, #ffe9a0 0%, #ff7a3c 45%, #ff2e88 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .menu-sub { font-size: 13px; font-weight: 800; letter-spacing: 4px; color: #2ec8ff; margin-top: 6px; }
+  .menu-tag { font-size: 15px; color: #ffe9f2; margin: 14px 0 20px; line-height: 1.45; }
+  .menu-item { pointer-events: auto; cursor: pointer; display: block; width: 100%; text-align: left; background: none; border: none; color: #fff; font-size: 30px; font-weight: 900; letter-spacing: 1px; padding: 6px 0; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+  .menu-item:hover { color: #ffc21a; }
+  .menu-portraits { display: flex; gap: 14px; margin-top: 26px; }
+  .menu-portrait { text-align: center; font-size: 11px; font-weight: 800; color: #ffe9f2; }
+  .menu-portrait svg { border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+  .menu-right { width: 330px; }
+  .howto { background: rgba(16,12,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 16px 18px; color: #fff; }
+  .howto h3 { color: #2ec8ff; font-size: 15px; letter-spacing: 2px; margin-bottom: 10px; }
+  .howto-row { display: flex; gap: 10px; font-size: 13px; padding: 3px 0; }
+  .howto-key { flex: none; min-width: 74px; font-weight: 800; color: #ffd27a; }
+  .settings-card { margin-top: 12px; background: rgba(16,12,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 14px 16px; color: #fff; display: none; }
+  .settings-card h3 { font-size: 14px; letter-spacing: 2px; color: #ff7ab0; margin-bottom: 8px; }
+  .settings-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; padding: 4px 0; }
+  .mini-btn { pointer-events: auto; cursor: pointer; background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; font-size: 12px; font-weight: 800; padding: 5px 12px; }
+  .mini-btn:hover { background: rgba(255,46,136,0.4); }
+
+  /* City map overlay */
+  #map-overlay { display: none; background: rgba(10,6,20,0.95); }
+  .map-wrap { width: 1180px; max-width: 96vw; color: #fff; }
+  .map-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .map-title { font-size: 30px; font-weight: 900; letter-spacing: 1px; }
+  .map-title span { color: #ff5a3c; }
+  .map-close-hint { font-size: 12px; font-weight: 700; color: #b8c4d8; }
+  .map-body { display: flex; gap: 14px; align-items: stretch; }
+  .map-col { width: 230px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+  .map-panel { background: rgba(16,12,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 12px 14px; }
+  .map-panel h3 { font-size: 13px; letter-spacing: 2px; color: #ffc21a; margin-bottom: 8px; }
+  .map-panel h3.blue { color: #2ec8ff; }
+  .map-job { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 13px; }
+  .map-job:last-child { border-bottom: none; }
+  .map-job .chip { flex: none; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: rgba(255,255,255,0.14); }
+  .map-job .t { flex: 1; font-weight: 800; }
+  .map-job .p { color: #4ade80; font-weight: 800; font-size: 12px; }
+  .map-job .s { font-size: 11px; font-weight: 800; }
+  .map-job.done .s { color: #4ade80; }
+  .map-job.active { background: rgba(255,194,26,0.12); border-radius: 8px; }
+  .map-job.active .s { color: #ffc21a; }
+  .map-job.locked { opacity: 0.5; }
+  .map-job.locked .s { color: #b8c4d8; }
+  #citymap { border-radius: 12px; border: 2px solid rgba(255,255,255,0.25); background: #0d2a3a; }
+  .map-legend-row { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 2px 0; }
+  .map-legend-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; color: #fff; }
+  .map-stat { font-size: 13px; font-weight: 800; padding: 3px 0; }
+  .map-stat span { color: #4ade80; }
+  .map-stat .y { color: #ffc21a; }
+  #map-current .cur-title { font-size: 16px; font-weight: 900; }
+  #map-current .cur-brief { font-size: 12px; color: #b8c4d8; margin-top: 2px; line-height: 1.4; }
+  #map-current .cur-stage { font-size: 12px; font-weight: 800; color: #ffd27a; margin-top: 6px; }
+  #map-close { margin-top: 14px; }
+  .overlay-card { text-align: center; color: #fff; max-width: 560px; padding: 30px; }
+  .overlay-card h1 { font-size: 74px; letter-spacing: 6px; font-weight: 900; text-shadow: 0 4px 30px rgba(255,46,136,0.8); }
+  .overlay-card h1 span { color: #ffc21a; }
+  .overlay-card p { font-size: 16px; margin: 10px 0 20px; color: #ffe9f2; }
+  .btn { pointer-events: auto; cursor: pointer; background: #ff2e88; color: #fff; border: none; font-size: 18px; font-weight: 800; padding: 12px 34px; border-radius: 30px; box-shadow: 0 4px 20px rgba(255,46,136,0.6); }
+  .btn:hover { background: #ff4d9c; }
+  .btn.ghost { background: rgba(255,255,255,0.16); box-shadow: none; margin-left: 10px; }
+  .controls { margin-top: 22px; font-size: 13px; color: #ffd9e8; line-height: 1.8; }
+  #title-cash { margin-top: 14px; font-size: 13px; font-weight: 700; color: #ffd27a; }
+  #pause-overlay, #shop-overlay { display: none; background: rgba(10,6,20,0.82); }
+  #pause-overlay h2, #shop-overlay h2 { font-size: 42px; font-weight: 900; color: #fff; margin-bottom: 18px; }
+  .shop-list { display: flex; flex-direction: column; gap: 8px; min-width: 380px; }
+  .shop-row { pointer-events: auto; cursor: pointer; display: flex; justify-content: space-between; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 15px; padding: 10px 16px; border-radius: 10px; }
+  .shop-row:hover { background: rgba(255,46,136,0.35); }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="mission-panel" class="panel">
-  <h2 id="mission-title">Getaway Driver</h2>
-  <div id="mission-stage">MISSION 1/8 · STEP 1/2</div>
-  <div id="mission-objective">Steal a car and reach the Marina Tower</div>
+<canvas id="game-canvas"></canvas>
+<div id="loading-note">Loading Solmar…</div>
+
+<div id="hud">
+  <div id="mission-panel" class="glass">
+    <div class="row1"><span><span id="mission-chapter">CH 1</span> <span id="mission-title">HOT PURSUIT</span></span><span id="mission-timer">⏱ 2:30</span></div>
+    <div id="mission-brief">Lose the cops before the scanner window closes</div>
+    <div id="mission-hint">They can see you — break line of sight</div>
+    <div id="mission-stage">STAGE 1/2</div>
+    <div id="mission-next">NEXT Bring the money home</div>
+  </div>
+
+  <div id="roster" class="glass">
+    <div class="roster-head"><span>🚓 PD RESPONSE</span><span id="roster-count"></span></div>
+    <div id="roster-rows"></div>
+  </div>
+
+  <div id="top-right" class="glass">
+    <div id="day-time">DAY 1 18:52</div>
+    <div id="cash">$2,450</div>
+    <div id="stars" class="stars">☆☆☆☆☆</div>
+    <div id="heat-label" class="heat-quiet">STREETS QUIET</div>
+  </div>
+
+  <div id="weapons"></div>
+
+  <div id="radio" class="glass">
+    <div><span id="radio-station">REEF 92.3 · Sunset Drive</span><span class="eq"><i></i><i></i><i></i></span></div>
+    <div id="radio-track">Coral Light — The Tides</div>
+  </div>
+
+  <div id="vitals" class="glass">
+    <div class="vital-row"><label>HEALTH</label><div class="bar"><i id="health-bar"></i></div><span class="vital-num" id="health-num">100</span></div>
+    <div class="vital-row"><label>RESPECT</label><div class="bar"><i id="rep-bar"></i></div><span class="vital-num" id="rep-num">62</span></div>
+  </div>
+
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="168" height="168"></canvas><br>
+    <span id="minimap-label">PALM STRAND</span>
+  </div>
+
+  <div id="dialogue" class="glass">
+    <div id="dialogue-portrait"></div>
+    <div><span id="dialogue-name">MARCO</span><span id="dialogue-role">FIXER</span><div id="dialogue-text"></div></div>
+  </div>
+
+  <div id="speedo" class="glass">
+    <div id="speed-car">SOLMAR COMET</div>
+    <div class="cond-row"><label>CONDITION</label><div class="bar"><i id="speed-condition"></i></div></div>
+    <div class="cond-row"><label>NOS</label><div class="bar"><i id="speed-nos"></i></div></div>
+    <div><span id="speed-num">0</span> <span class="kmh">KM/H</span><span id="speed-gear">G1</span></div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="crosshair"></div>
 </div>
+<div id="hint">WASD drive / walk · E enter car or shop · F punch · 1–4 weapons · R radio · M map · L save · P pause</div>
 
-<div id="stats-panel" class="panel">
-  <div id="wanted-stars">☆☆☆☆☆</div>
-  <div id="cash">$2,450</div>
-  <div class="bar-label"><span>HEALTH</span><span id="health-text"></span></div>
-  <div class="bar"><div id="health-fill"></div></div>
-  <div class="bar-label"><span>REPUTATION</span><span id="rep-label">CREW CAPTAIN · 62%</span></div>
-  <div class="bar"><div id="rep-fill"></div></div>
-</div>
-
-<div id="minimap-wrap"><canvas id="minimap" width="170" height="170"></canvas></div>
-
-<div id="roster-panel" class="panel">
-  <h3>POLICE RESPONSE</h3>
-  <div id="roster-list"></div>
-</div>
-
-<div id="weapon-slots" class="panel">
-  <div class="slot active" id="slot-1"><span class="slot-key">1</span><span class="slot-name">Pistol</span><span class="slot-ammo">240 rds</span></div>
-  <div class="slot locked" id="slot-2"><span class="slot-key">2</span><span class="slot-name">SMG</span><span class="slot-ammo">LOCKED $600</span></div>
-  <div class="slot locked" id="slot-3"><span class="slot-key">3</span><span class="slot-name">Shotgun</span><span class="slot-ammo">LOCKED $900</span></div>
-</div>
-
-<div id="speed-panel" class="panel">
-  <div><span id="speed">0</span> <span id="speed-unit">km/h</span></div>
-  <div id="car-name">ON FOOT</div>
-  <div id="nos-label">NOS</div>
-  <div class="bar"><div id="nos-fill" style="background:#3db8ff"></div></div>
-</div>
-
-<div id="bottom-centre" class="panel">
-  <div id="radio-line"><span id="radio-station">SOLMAR FM 101.5</span> · <span id="radio-track">Coastline Nights — The Palms</span></div>
-  <div id="controls-hint">WASD drive / walk · E enter car or shop · F punch · Click shoot · 1/2/3 weapons · N NOS · R radio · C camera · P pause · L save · M mute</div>
-</div>
-
-<div id="dialogue">
-  <div id="dialogue-speaker">MARCO</div>
-  <div id="dialogue-text"></div>
-</div>
-
-<div id="toast"></div>
-<div id="crosshair"></div>
-
-<div id="shop-overlay" class="overlay">
-  <div class="overlay-card">
-    <div id="shop-title">Shop</div>
-    <p id="shop-subtitle"></p>
-    <p id="shop-cash"></p>
-    <div id="shop-items"></div>
-    <button id="shop-close-btn" class="big-btn">Close</button>
+<div id="menu" class="overlay">
+  <div class="menu-wrap">
+    <div class="menu-left">
+      <div class="menu-logo">SOLMAR</div>
+      <div class="menu-sub">OPEN-WORLD CRIME · SUNSET CITY</div>
+      <div class="menu-tag">Sunset. Salt air. Five stars on your tail. Run the coast, run the jobs, and make this city yours.</div>
+      <button id="continue-btn" class="menu-item" style="display:none">CONTINUE</button>
+      <button id="start-btn" class="menu-item">NEW GAME</button>
+      <button id="controls-btn" class="menu-item">CONTROLS</button>
+      <button id="settings-btn" class="menu-item">SETTINGS</button>
+      <div id="title-cash"></div>
+      <div class="menu-portraits">
+        <div class="menu-portrait"><svg viewBox="0 0 64 64" width="52" height="52"><rect width="64" height="64" rx="10" fill="#3a2a6a"/><circle cx="32" cy="30" r="15" fill="#e8b98a"/><path d="M17 28 Q32 8 47 28 L47 22 Q32 6 17 22 Z" fill="#2a1a10"/><rect x="14" y="24" width="36" height="6" rx="3" fill="#1c1c26"/><circle cx="26" cy="30" r="2.4" fill="#1c1c26"/><circle cx="38" cy="30" r="2.4" fill="#1c1c26"/><path d="M26 40 Q32 44 38 40" stroke="#1c1c26" stroke-width="2" fill="none"/><rect x="18" y="48" width="28" height="12" rx="4" fill="#ff2e88"/><rect x="30" y="48" width="4" height="12" fill="#ffe0f0"/></svg><br>RIO VEGA</div>
+        <div class="menu-portrait"><svg viewBox="0 0 64 64" width="52" height="52"><rect width="64" height="64" rx="10" fill="#ff2e88"/><circle cx="32" cy="30" r="15" fill="#e8b98a"/><path d="M17 28 Q32 8 47 28 L47 22 Q32 6 17 22 Z" fill="#1c1c26"/><rect x="14" y="24" width="36" height="6" rx="3" fill="#ff2e88"/><circle cx="26" cy="30" r="2.4" fill="#1c1c26"/><circle cx="38" cy="30" r="2.4" fill="#1c1c26"/><path d="M26 40 Q32 44 38 40" stroke="#1c1c26" stroke-width="2" fill="none"/><rect x="18" y="48" width="28" height="12" rx="4" fill="#1c1c26"/></svg><br>MARCO</div>
+        <div class="menu-portrait"><svg viewBox="0 0 64 64" width="52" height="52"><rect width="64" height="64" rx="10" fill="#2ec8ff"/><circle cx="32" cy="30" r="15" fill="#f0c09a"/><path d="M15 32 Q12 10 32 10 Q52 10 49 32 Q46 18 32 18 Q18 18 15 32 Z" fill="#ff5aa0"/><rect x="18" y="26" width="28" height="7" rx="3.5" fill="#0a0a12"/><line x1="32" y1="29" x2="32" y2="33" stroke="#0a0a12" stroke-width="2"/><path d="M26 40 Q32 44 38 40" stroke="#7a2a3a" stroke-width="2" fill="none"/><rect x="18" y="48" width="28" height="12" rx="4" fill="#ff5aa0"/></svg><br>LENA</div>
+      </div>
+    </div>
+    <div class="menu-right">
+      <div class="howto" id="howto-panel">
+        <h3>HOW TO PLAY</h3>
+        <div class="howto-row"><span class="howto-key">WASD</span><span>Walk / drive</span></div>
+        <div class="howto-row"><span class="howto-key">Mouse</span><span>Aim · Click to shoot</span></div>
+        <div class="howto-row"><span class="howto-key">Shift</span><span>NOS boost</span></div>
+        <div class="howto-row"><span class="howto-key">E</span><span>Enter / steal a car · open shop</span></div>
+        <div class="howto-row"><span class="howto-key">F</span><span>Punch</span></div>
+        <div class="howto-row"><span class="howto-key">1–4</span><span>Fists · Pistol · Viper SMG · Shotgun</span></div>
+        <div class="howto-row"><span class="howto-key">R</span><span>Next radio station</span></div>
+        <div class="howto-row"><span class="howto-key">M</span><span>City map</span></div>
+        <div class="howto-row"><span class="howto-key">L</span><span>Save game</span></div>
+        <div class="howto-row"><span class="howto-key">P</span><span>Pause</span></div>
+      </div>
+      <div class="settings-card" id="settings-card">
+        <h3>SETTINGS</h3>
+        <div class="settings-row"><span>Sound</span><button id="sound-toggle" class="mini-btn">ON</button></div>
+        <div class="settings-row"><span>Progress</span><button id="reset-save" class="mini-btn">RESET SAVE</button></div>
+      </div>
+    </div>
   </div>
 </div>
 
 <div id="pause-overlay" class="overlay">
   <div class="overlay-card">
-    <h1>PAUSED</h1>
-    <h2>SOLMAR IS WAITING</h2>
-    <p>The city holds its breath. Your rep, your cash and your wanted level are exactly where you left them.</p>
-    <button id="resume-btn" class="big-btn">Resume</button>
+    <h2>PAUSED</h2>
+    <button id="resume-btn" class="btn">RESUME</button>
+    <button id="quit-btn" class="btn ghost">QUIT TO MENU</button>
   </div>
 </div>
 
-<div id="start-overlay" class="overlay">
+<div id="shop-overlay" class="overlay">
   <div class="overlay-card">
-    <h1>SOLMAR</h1>
-    <h2>OPEN-WORLD CRIME GAME</h2>
-    <p>Sunset over the coast. Eight missions with Marco and Lena, a police force that does not give up, cars worth stealing, and a wheel that never stops turning. Make the coast yours.</p>
-    <div class="keys">
-      <b>WASD</b> walk / drive &nbsp;·&nbsp; <b>E</b> steal car / open shop &nbsp;·&nbsp; <b>Space</b> handbrake &nbsp;·&nbsp; <b>N</b> NOS boost<br>
-      <b>Click</b> shoot &nbsp;·&nbsp; <b>1 / 2 / 3</b> weapons &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>R</b> radio &nbsp;·&nbsp; <b>C</b> camera &nbsp;·&nbsp; <b>L</b> save &nbsp;·&nbsp; <b>P</b> pause
+    <h2 id="shop-title">SHOP</h2>
+    <div id="shop-items" class="shop-list"></div>
+    <br>
+    <button id="shop-close" class="btn">DONE</button>
+  </div>
+</div>
+
+<div id="map-overlay" class="overlay">
+  <div class="map-wrap">
+    <div class="map-head"><span class="map-title">SOLMAR <span>CITY MAP</span></span><span class="map-close-hint">M / Esc close</span></div>
+    <div class="map-body">
+      <div class="map-col">
+        <div class="map-panel"><h3>STORY</h3><div id="map-story"></div></div>
+        <div class="map-panel"><h3>CURRENT JOB</h3><div id="map-current"></div></div>
+      </div>
+      <canvas id="citymap" width="640" height="460"></canvas>
+      <div class="map-col">
+        <div class="map-panel"><h3 class="blue">LEGEND</h3><div id="map-legend"></div></div>
+        <div class="map-panel"><div id="map-stats"></div></div>
+      </div>
     </div>
-    <button id="start-btn" class="big-btn">Start the engine</button>
+    <button id="map-close" class="btn">CLOSE MAP</button>
   </div>
 </div>
 

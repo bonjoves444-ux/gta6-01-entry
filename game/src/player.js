@@ -1,173 +1,214 @@
-// The player on foot: movement, entering and leaving cars, punching, and
-// the wallet of stats (cash, reputation, health, weapons) the HUD reads.
+// player.js — the on-foot player for SOLMAR: a pink-jacketed driver
+// who walks the streets, punches, and slips in and out of cars.
+// Built facing +Z like the cars, so rotation.y = PI - heading holds.
+
+// Player: on foot by default. .car is the car being driven, or null.
 import * as THREE from 'three';
+import { clamp, wrapAngle } from './random.js';
 
-export const START_CASH = 2450;
-export const START_REP = 62;
-
-export function rankFor(rep) {
-  if (rep >= 90) return 'KING OF THE COAST';
-  if (rep >= 75) return 'CREW CAPTAIN';
-  if (rep >= 55) return 'CREW MEMBER';
-  if (rep >= 30) return 'STREET RUNNER';
-  return 'ROOKIE';
-}
-
-export function createPlayer(G) {
-  const group = new THREE.Group();
-  const jacket = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.85, 0.4),
-    new THREE.MeshLambertMaterial({ color: 0x2a6b8a })
-  );
-  jacket.position.y = 1.15;
-  group.add(jacket);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.26, 12, 10),
-    new THREE.MeshLambertMaterial({ color: 0xd9a986 })
-  );
-  head.position.y = 1.8;
-  group.add(head);
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.27, 0.29, 0.12, 12),
-    new THREE.MeshLambertMaterial({ color: 0xe8a13d })
-  );
-  cap.position.y = 2.0;
-  group.add(cap);
-  const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
-  for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.7, 0.3), legMat);
-    leg.position.set(s * 0.18, 0.35, 0);
-    group.add(leg);
+export class Player {
+  constructor(scene, x, z, heading) {
+    this.scene = scene;
+    this.x = x;
+    this.z = z;
+    this.heading = heading || 0;
+    this.onFoot = true;
+    this.car = null;
+    this.gun = 'pistol';
+    this.walkPhase = 0;
+    this.punchTimer = 0;
+    this.mesh = new THREE.Group();
+    this.mesh.position.set(x, 0, z);
+    this.buildBody();
+    scene.add(this.mesh);
+    this.syncMesh();
   }
-  G.scene.add(group);
-  const player = {
-    group,
-    x: -55,
-    z: 55,
-    heading: 0,
-    camHeading: 0,
-    walkSpeed: 6.5,
-    inCar: false,
-    car: null,
-    health: 100,
-    cash: START_CASH,
-    rep: START_REP,
-    weapons: {
-      pistol: { owned: true, ammo: 240 },
-      smg: { owned: false, ammo: 0 },
-      shotgun: { owned: false, ammo: 0 },
-    },
-    weapon: 'pistol',
-    punchCooldown: 0,
-  };
-  group.position.set(player.x, 0, player.z);
-  return player;
-}
 
-export function updatePlayer(G, dt) {
-  const p = G.player;
-  if (p.inCar || G.shopOpen || !G.started || G.paused) return;
-  const input = G.input;
-  const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
-  const strafe = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  if (fwd === 0 && strafe === 0) return;
-  // Camera-relative movement against the FROZEN on-foot camera heading:
-  // the camera never chases the player's heading, so W+D walks a straight
-  // diagonal instead of spiralling.
-  const ch = p.camHeading;
-  const fx = Math.sin(ch);
-  const fz = Math.cos(ch);
-  const rx = Math.cos(ch);
-  const rz = -Math.sin(ch);
-  let mx = fx * fwd + rx * strafe;
-  let mz = fz * fwd + rz * strafe;
-  const len = Math.hypot(mx, mz) || 1;
-  mx /= len;
-  mz /= len;
-  const nx = p.x + mx * p.walkSpeed * dt;
-  const nz = p.z + mz * p.walkSpeed * dt;
-  const fixed = G.city.collide(nx, nz, 0.6);
-  p.x = fixed.x;
-  p.z = fixed.z;
-  p.heading = Math.atan2(mx, mz);
-  p.group.position.set(p.x, 0, p.z);
-  p.group.rotation.y = p.heading;
-  // Walk swing on the legs, purely cosmetic.
-  p.group.children.forEach((child, i) => {
-    if (i >= 3) child.position.z = Math.sin(G.time * 9 + i) * 0.12;
-  });
-}
-
-export function nearestCar(G, maxDist) {
-  let best = null;
-  let bestD = maxDist;
-  for (const car of G.cars) {
-    const d = Math.hypot(car.x - G.player.x, car.z - G.player.z);
-    if (d < bestD) {
-      bestD = d;
-      best = car;
+  // buildBody: pink jacket with dark side panels and a zip strip, head
+  // with hair, cap with a pink brim, sunglasses, pivoted arms and legs,
+  // and a small SMG in hand whenever the player is armed. Proportions
+  // are human now — long legs, small head — instead of the old
+  // big-headed block figure.
+  buildBody() {
+    const pink = new THREE.MeshStandardMaterial({ color: 0xff2e88, roughness: 0.6 });
+    const pinkDark = new THREE.MeshStandardMaterial({ color: 0xd41e6e, roughness: 0.65 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1c1c26, roughness: 0.7 });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe8b98a, roughness: 0.7 });
+    const hair = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.9 });
+    // Torso: chest, waist and belt, dark side panels, pale zip strip.
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.62, 0.34), pink);
+    chest.position.y = 1.18;
+    chest.castShadow = true;
+    this.mesh.add(chest);
+    const waist = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.18, 0.32), pinkDark);
+    waist.position.y = 0.86;
+    this.mesh.add(waist);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.07, 0.34), dark);
+    belt.position.y = 0.94;
+    this.mesh.add(belt);
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.58, 0.02), new THREE.MeshStandardMaterial({ color: 0xffe0f0, roughness: 0.5 }));
+    zip.position.set(0, 1.18, 0.18);
+    this.mesh.add(zip);
+    for (const sx of [-1, 1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.58, 0.36), dark);
+      panel.position.set(sx * 0.28, 1.18, 0);
+      this.mesh.add(panel);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.36), pinkDark);
+      pad.position.set(sx * 0.3, 1.46, 0);
+      this.mesh.add(pad);
     }
+    // Chest pocket on the left.
+    const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.02), pinkDark);
+    pocket.position.set(-0.16, 1.28, 0.18);
+    this.mesh.add(pocket);
+    // Neck, head, hair, cap with pink brim, sunglasses.
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.12, 8), skin);
+    neck.position.y = 1.52;
+    this.mesh.add(neck);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.34), skin);
+    head.position.y = 1.72;
+    head.castShadow = true;
+    this.mesh.add(head);
+    const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.12, 0.36), hair);
+    hairTop.position.y = 1.88;
+    this.mesh.add(hairTop);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.09, 10), dark);
+    cap.position.y = 1.93;
+    this.mesh.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.2), pink);
+    brim.position.set(0, 1.9, 0.26);
+    this.mesh.add(brim);
+    const shades = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.09, 0.05), new THREE.MeshStandardMaterial({ color: 0x0a0a12, metalness: 0.8, roughness: 0.2 }));
+    shades.position.set(0, 1.73, 0.18);
+    this.mesh.add(shades);
+    // Arms and legs on pivots so they can swing while walking.
+    this.armL = this.limb(-0.36, 1.42, pink, 0.58, 0.16, skin);
+    this.armR = this.limb(0.36, 1.42, pink, 0.58, 0.16, skin);
+    this.legL = this.limb(-0.16, 0.85, dark, 0.8, 0.15, dark, true);
+    this.legR = this.limb(0.16, 0.85, dark, 0.8, 0.15, dark, true);
+    // Small SMG in the right hand when armed.
+    const smg = new THREE.Group();
+    const smgBody = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.5), dark);
+    smg.add(smgBody);
+    const smgGrip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.1), dark);
+    smgGrip.position.set(0, -0.14, 0.05);
+    smg.add(smgGrip);
+    smg.position.set(0, -0.6, 0.15);
+    this.armR.add(smg);
+    this.smgMesh = smg;
+    this.smgMesh.visible = false;
   }
-  return best;
-}
 
-export function enterCar(G, car) {
-  const p = G.player;
-  p.inCar = true;
-  p.car = car;
-  car.traffic = false;
-  car.parked = false;
-  p.group.visible = false;
-  p.x = car.x;
-  p.z = car.z;
-  p.heading = car.heading;
-  G.hud.showToast(G, `Stole the ${car.name} — drive!`);
-}
-
-export function exitCar(G) {
-  const p = G.player;
-  const car = p.car;
-  if (!car) return;
-  p.inCar = false;
-  p.car = null;
-  const f = { x: Math.sin(car.heading), z: Math.cos(car.heading) };
-  p.x = car.x - f.z * 2.4;
-  p.z = car.z + f.x * 2.4;
-  p.camHeading = car.heading;
-  p.group.visible = true;
-  p.group.position.set(p.x, 0, p.z);
-  car.speed = 0;
-}
-
-export function punch(G) {
-  const p = G.player;
-  if (p.punchCooldown > 0 || p.inCar) return;
-  p.punchCooldown = 0.45;
-  let hit = null;
-  let bestD = 2.4;
-  for (const e of G.enemies) {
-    if (e.dead) continue;
-    const d = Math.hypot(e.x - p.x, e.z - p.z);
-    if (d < bestD) {
-      bestD = d;
-      hit = e;
+  // limb(x, y, material, len, width, tipMat, isLeg): one pivoted arm or
+  // leg, hanging down from its shoulder/hip pivot so walk() can swing
+  // it. A hand (skin) or shoe (dark, forward) caps the end.
+  limb(x, y, material, len, width, tipMat, isLeg) {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, y, 0);
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(width, len, width + 0.02), material);
+    seg.position.y = -len / 2;
+    seg.castShadow = true;
+    pivot.add(seg);
+    if (isLeg) {
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.3), tipMat);
+      shoe.position.set(0, -len - 0.02, 0.06);
+      shoe.castShadow = true;
+      pivot.add(shoe);
+    } else {
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.15), tipMat);
+      hand.position.set(0, -len - 0.04, 0);
+      pivot.add(hand);
     }
+    this.mesh.add(pivot);
+    return pivot;
   }
-  if (hit) {
-    hit.health -= 25;
-    G.hud.showToast(G, 'You landed a punch!');
-    if (hit.health <= 0) killEnemy(G, hit);
+
+  // walk(dt, input, camYaw): move on foot with WASD relative to the
+  // camera yaw, swinging arms and legs with each step.
+  walk(dt, input, camYaw) {
+    if (!this.onFoot) return;
+    let fx = 0;
+    let fz = 0;
+    if (input.down('KeyW')) { fx += Math.sin(camYaw); fz += -Math.cos(camYaw); }
+    if (input.down('KeyS')) { fx -= Math.sin(camYaw); fz -= -Math.cos(camYaw); }
+    if (input.down('KeyA')) { fx += Math.sin(camYaw - Math.PI / 2); fz += -Math.cos(camYaw - Math.PI / 2); }
+    if (input.down('KeyD')) { fx += Math.sin(camYaw + Math.PI / 2); fz += -Math.cos(camYaw + Math.PI / 2); }
+    const len = Math.hypot(fx, fz);
+    if (len > 0.01) {
+      fx /= len;
+      fz /= len;
+      const speed = 5.2;
+      this.x += fx * speed * dt;
+      this.z += fz * speed * dt;
+      const targetHeading = Math.atan2(fx, -fz);
+      this.heading = this.heading + wrapAngle(targetHeading - this.heading) * Math.min(1, dt * 12);
+      this.walkPhase += dt * 9;
+      const swing = Math.sin(this.walkPhase) * 0.55;
+      this.armL.rotation.x = swing;
+      this.armR.rotation.x = -swing;
+      this.legL.rotation.x = -swing;
+      this.legR.rotation.x = swing;
+    } else {
+      this.armL.rotation.x *= 0.8;
+      this.armR.rotation.x *= 0.8;
+      this.legL.rotation.x *= 0.8;
+      this.legR.rotation.x *= 0.8;
+    }
+    this.syncMesh();
   }
-}
 
-export function killEnemy(G, enemy) {
-  enemy.dead = true;
-  enemy.group.rotation.x = -Math.PI / 2;
-  enemy.group.position.y = 0.4;
-  G.player.cash += 120;
-  G.hud.showToast(G, 'Rival down — took $120 off him.');
-}
+  // update(dt): punch animation decay and the armed-gun visibility.
+  update(dt) {
+    if (this.punchTimer > 0) {
+      this.punchTimer -= dt;
+      this.armR.rotation.x = -1.4 * Math.max(0, this.punchTimer / 0.25);
+    }
+    if (this.smgMesh) this.smgMesh.visible = this.onFoot && this.gun !== 'fists';
+    this.syncMesh();
+  }
 
-export function tickPlayer(G, dt) {
-  if (G.player.punchCooldown > 0) G.player.punchCooldown -= dt;
+  // punch(): throw a punch — a quick right-arm swing.
+  punch() {
+    this.punchTimer = 0.25;
+  }
+
+  // enterCar(car): climb in. The on-foot mesh hides while driving.
+  enterCar(car) {
+    this.car = car;
+    this.onFoot = false;
+    this.mesh.visible = false;
+    this.x = car.x;
+    this.z = car.z;
+    this.heading = car.heading;
+  }
+
+  // exitCar(): step out beside the car, facing the same way it does.
+  exitCar() {
+    if (!this.car) return;
+    const car = this.car;
+    const side = 2.2;
+    const sx = Math.cos(car.heading) * side;
+    const sz = Math.sin(car.heading) * side;
+    this.car = null;
+    this.onFoot = true;
+    this.x = car.x + sx;
+    this.z = car.z + sz;
+    this.heading = car.heading;
+    this.mesh.visible = true;
+    this.syncMesh();
+  }
+
+  // place(x, z, h): teleport the player (spawns, saves, shot staging).
+  place(x, z, h) {
+    this.x = x;
+    this.z = z;
+    if (h !== undefined) this.heading = h;
+    this.syncMesh();
+  }
+
+  // syncMesh(): push x/z/heading into the mesh.
+  syncMesh() {
+    this.mesh.position.set(this.x, 0, this.z);
+    this.mesh.rotation.y = Math.PI - this.heading;
+  }
 }

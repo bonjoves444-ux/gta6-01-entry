@@ -1,49 +1,57 @@
-// SOLMAR dev server: serves game/ over HTTP so the game can be played and
-// screenshot in a desktop browser. Usage: node serve.ts --port 8080
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { join, extname, normalize, sep } from 'node:path';
+// serve.ts — a plain Node static server for playing SOLMAR locally.
+// No Deno here: node:http + node:fs only. Serves game/ as the root,
+// takes a --port flag (default 8080), and answers with the right MIME
+// type for html, js, mjs, json, jpg, css and svg. Plain JS in a .ts
+// file, so node runs it with no flags and no build step.
+
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const port = portIndex >= 0 ? Number(args[portIndex + 1]) || 8080 : 8080;
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(here, 'game');
 
-const TYPES = {
+const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
+  '.png': 'image/png',
+  '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
 };
 
-const server = createServer(async (req, res) => {
+let port = 8080;
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === '--port' && process.argv[i + 1]) {
+    port = parseInt(process.argv[i + 1], 10) || 8080;
+  }
+}
+
+const server = http.createServer((req, res) => {
   try {
-    const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
+    const url = new URL(req.url || '/', 'http://localhost');
     let rel = decodeURIComponent(url.pathname);
     if (rel === '/') rel = '/index.html';
-    const file = normalize(join(root, rel));
-    if (!file.startsWith(root + sep) && file !== root) {
+    const file = path.join(root, rel);
+    if (!file.startsWith(root)) {
       res.writeHead(403);
       res.end('forbidden');
       return;
     }
-    const bytes = await readFile(file);
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' });
-    res.end(bytes);
-  } catch (e) {
+    const data = fs.readFileSync(file);
+    const ext = path.extname(file).toLowerCase();
+    res.writeHead(200, { 'content-type': MIME[ext] || 'application/octet-stream' });
+    res.end(data);
+  } catch (err) {
     res.writeHead(404);
     res.end('not found');
   }
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`SOLMAR dev server: http://127.0.0.1:${port}/`);
+  console.log('SOLMAR on http://127.0.0.1:' + port + '/');
 });
