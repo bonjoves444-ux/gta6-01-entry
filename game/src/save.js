@@ -1,5 +1,7 @@
-// save.js — save and load Rio's progress in localStorage, plus a save file download.
-const SAVE_KEY = "solmar-save-v1";
+// save.js — save and load Rio's progress in localStorage, plus a save file
+// download. Round 2 saves the whole loadout: cash, rep, weapons and ammo,
+// the mission index, the radio station and where Rio was standing.
+const SAVE_KEY = "solmar-save-v2";
 
 export function createSaveSystem() {
   return {
@@ -7,12 +9,18 @@ export function createSaveSystem() {
       try {
         const player = ctx.player;
         const data = {
+          version: 2,
           cash: player.cash,
           health: player.health,
+          rep: player.rep || 0,
           wanted: player.wanted,
+          weapon: player.weapon,
+          weapons: player.weapons,
+          ammoByWeapon: player.ammoByWeapon,
           ammo: player.ammo,
           missionIndex: ctx.missions.index,
           missionsCompleted: ctx.missions.completed,
+          radioStation: ctx.audio.station().name,
           position: {
             x: player.mesh.position.x,
             z: player.mesh.position.z,
@@ -35,8 +43,12 @@ export function createSaveSystem() {
         const player = ctx.player;
         player.cash = data.cash || 0;
         player.health = data.health || 100;
+        player.rep = data.rep || 0;
         player.wanted = 0;
-        player.ammo = data.ammo || 24;
+        player.weapon = data.weapon || "pistol";
+        player.weapons = data.weapons || { pistol: true, smg: false, shotgun: false };
+        player.ammoByWeapon = data.ammoByWeapon || { pistol: 24, smg: 0, shotgun: 0 };
+        player.ammo = player.ammoByWeapon[player.weapon] || 0;
         if (data.position) {
           player.mesh.position.x = data.position.x;
           player.mesh.position.z = data.position.z;
@@ -51,6 +63,15 @@ export function createSaveSystem() {
     hasSave() {
       try {
         return !!window.localStorage.getItem(SAVE_KEY);
+      } catch (error) {
+        return false;
+      }
+    },
+    // Wipe the save and start the story over from mission one.
+    clearSave() {
+      try {
+        window.localStorage.removeItem(SAVE_KEY);
+        return true;
       } catch (error) {
         return false;
       }

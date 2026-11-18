@@ -1,5 +1,1 @@
-[
-  { "name": "1-start.jpg", "query": "?shot=start&seed=1" },
-  { "name": "2-play.jpg", "query": "?shot=play&seed=1" },
-  { "name": "3-end.jpg", "query": "?shot=end&seed=1" }
-]
+[{"name":"1-chase.jpg","query":"?shot=1","scene":"Beachfront police chase at 108 km/h, four stars, helicopter overhead"},{"name":"2-downtown.jpg","query":"?shot=2","scene":"Downtown traffic at 86 km/h between the neon towers, one star"},{"name":"3-mission.jpg","query":"?shot=3","scene":"On-foot market pickup with the SMG, rivals closing in"},{"name":"4-dusk.jpg","query":"?shot=4","scene":"Dusk heist escape at 115 km/h, five stars, helicopter and cruisers"}]

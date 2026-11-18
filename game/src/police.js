@@ -1,5 +1,10 @@
-// police.js — the wanted level and the Solmar Police who answer it.
+// police.js — the wanted level, the Solmar Police cruisers that answer it,
+// and the police helicopter that joins the chase at three stars and up.
+// Every cruiser carries a unit number and a behaviour the HUD roster shows.
+import * as THREE from "three";
 import { createCar } from "./vehicles.js";
+
+const UNIT_NUMBERS = ["07", "12", "19", "23", "31", "44"];
 
 export function createPoliceSystem(scene) {
   return {
@@ -11,6 +16,9 @@ export function createPoliceSystem(scene) {
     spawnTimer: 0,
     arrestTimer: 0,
     maxCars: 6,
+    heli: null,
+    heliAngle: 0,
+    roster: [],
   };
 }
 
@@ -33,6 +41,25 @@ export function lowerWanted(ctx, stars) {
   }
 }
 
+// A small canvas texture that reads POLICE on the cruiser doors.
+function policeDoorTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const g = canvas.getContext("2d");
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, 256, 64);
+  g.fillStyle = "#1c2f4a";
+  g.font = "bold 44px Verdana, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText("POLICE", 128, 34);
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+let doorTexture = null;
+
 // Spawn a police cruiser on a road near the player, pointed at them.
 export function spawnPoliceCar(ctx) {
   const player = ctx.player;
@@ -45,9 +72,117 @@ export function spawnPoliceCar(ctx) {
     isPolice: true, seed: 7000 + ctx.police.cars.length,
   });
   car.name = "Solmar Police Cruiser";
+  car.unit = UNIT_NUMBERS[ctx.police.cars.length % UNIT_NUMBERS.length];
+  car.behaviour = "PURSUIT";
+  // Each cruiser holds its own pursuit lane (-5, 0 or +5 metres off the
+  // player's line) so the pack flanks instead of piling onto one spot.
+  car.pursuitOffset = ((ctx.police.cars.length % 3) - 1) * 5;
+  if (!doorTexture) doorTexture = policeDoorTexture();
+  for (const side of [-1, 1]) {
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.0, 0.5),
+      new THREE.MeshBasicMaterial({ map: doorTexture, transparent: true })
+    );
+    door.position.set(side * 1.08, 0.72, 0);
+    door.rotation.y = side * Math.PI / 2;
+    car.mesh.add(door);
+  }
   ctx.police.cars.push(car);
   ctx.scene.add(car.mesh);
   return car;
+}
+
+// The police helicopter: body, tail, spinning rotor and a searchlight cone
+// that tracks the player from above. It circles the chase at 30 metres out.
+export function spawnPoliceHelicopter(ctx) {
+  if (ctx.police.heli) return ctx.police.heli;
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x1c2f4a });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 5.2), bodyMat);
+  group.add(body);
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(2.6, 1.2, 2.2),
+    new THREE.MeshLambertMaterial({ color: 0x9fd8ef })
+  );
+  cabin.position.set(0, 0.4, 1.4);
+  group.add(cabin);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 5.5), bodyMat);
+  tail.position.set(0, 0.3, -4.6);
+  group.add(tail);
+  const skidMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+  for (const side of [-1, 1]) {
+    const skid = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 4.4), skidMat);
+    skid.position.set(side * 1.3, -1.0, 0.4);
+    group.add(skid);
+  }
+  const rotor = new THREE.Group();
+  rotor.position.y = 1.1;
+  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+  for (const a of [0, Math.PI / 2]) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.5), bladeMat);
+    blade.rotation.y = a;
+    rotor.add(blade);
+  }
+  group.add(rotor);
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(3.24, 0.4, 5.24),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  stripe.position.y = -0.2;
+  group.add(stripe);
+  // Searchlight: a translucent cone from the belly to the street.
+  const cone = new THREE.Mesh(
+    new THREE.ConeGeometry(6, 26, 16, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff2b0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  cone.position.y = -13;
+  cone.rotation.x = Math.PI;
+  group.add(cone);
+  const spot = new THREE.Mesh(
+    new THREE.CircleGeometry(5, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.35, depthWrite: false })
+  );
+  spot.rotation.x = -Math.PI / 2;
+  spot.position.y = -25.8;
+  group.add(spot);
+  group.position.set(0, 30, 0);
+  ctx.scene.add(group);
+  ctx.police.heli = { mesh: group, rotor, cone, spot };
+  // Start the helicopter ahead of the player, high in the chase camera's view.
+  ctx.police.heliAngle = Math.PI;
+  return ctx.police.heli;
+}
+
+export function removePoliceHelicopter(ctx) {
+  if (!ctx.police.heli) return;
+  ctx.scene.remove(ctx.police.heli.mesh);
+  ctx.police.heli = null;
+}
+
+function updateHelicopter(ctx, dt) {
+  const heli = ctx.police.heli;
+  if (!heli) return;
+  const player = ctx.player;
+  const pos = player.inCar ? player.inCar.mesh.position : player.mesh.position;
+  ctx.police.heliAngle += dt * 0.55;
+  // Low and wide — 42 metres out, 16 up — so the helicopter sits inside the
+  // chase camera's frame instead of hovering above it.
+  const radius = 42;
+  heli.mesh.position.set(
+    pos.x + Math.sin(ctx.police.heliAngle) * radius,
+    16 + Math.sin(ctx.time * 0.8) * 1.5,
+    pos.z + Math.cos(ctx.police.heliAngle) * radius
+  );
+  heli.mesh.rotation.y = Math.atan2(pos.x - heli.mesh.position.x, pos.z - heli.mesh.position.z);
+  heli.rotor.rotation.y += dt * 22;
+  // Keep the searchlight pool on the player.
+  heli.spot.position.x = pos.x - heli.mesh.position.x;
+  heli.spot.position.z = pos.z - heli.mesh.position.z;
+  heli.spot.position.y = -heli.mesh.position.y + 0.3;
+  heli.cone.lookAt(pos.x, 0, pos.z);
+  heli.cone.rotateX(-Math.PI / 2);
 }
 
 function steerToward(car, targetX, targetZ, dt, topSpeed) {
@@ -66,6 +201,7 @@ function steerToward(car, targetX, targetZ, dt, topSpeed) {
 }
 
 // Police chase, ram, and arrest. Heat cools when the player stays unseen and slow.
+// The roster the HUD shows is rebuilt here every frame: unit, distance, behaviour.
 export function updatePolice(ctx, dt) {
   const police = ctx.police;
   const player = ctx.player;
@@ -80,16 +216,35 @@ export function updatePolice(ctx, dt) {
     spawnPoliceCar(ctx);
     police.spawnTimer = 2.2;
   }
+  // The helicopter joins at three stars and leaves when the heat is gone.
+  if (player.wanted >= 3 && !police.heli) spawnPoliceHelicopter(ctx);
+  if (player.wanted < 3 && police.heli) removePoliceHelicopter(ctx);
+  if (police.heli) updateHelicopter(ctx, dt);
 
   let nearestDistance = Infinity;
+  police.roster = [];
   for (const car of police.cars) {
     const topSpeed = 24 + player.wanted * 2.5;
-    steerToward(car, playerPos.x, playerPos.z, dt, topSpeed);
+    // Chase the player's line, offset into this cruiser's pursuit lane.
+    const dx = playerPos.x - car.mesh.position.x;
+    const dz = playerPos.z - car.mesh.position.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const offset = car.pursuitOffset || 0;
+    steerToward(car,
+      playerPos.x + (-dz / dist) * offset,
+      playerPos.z + (dx / dist) * offset,
+      dt, topSpeed);
     const distance = Math.hypot(
       car.mesh.position.x - playerPos.x,
       car.mesh.position.z - playerPos.z
     );
     nearestDistance = Math.min(nearestDistance, distance);
+    car.behaviour = distance < 8 ? "RAMMING" : distance < 30 ? "PURSUIT" : "RESPONDING";
+    police.roster.push({
+      unit: car.unit || "??",
+      distance: Math.round(distance),
+      behaviour: car.behaviour,
+    });
     // A ram at speed damages the player's car and health.
     if (distance < 3.2 && car.speed > 10) {
       if (player.inCar) {
@@ -102,11 +257,15 @@ export function updatePolice(ctx, dt) {
       ctx.audio.playCrash();
       car.speed *= 0.4;
     }
-    // Flash the light bar red and blue.
-    const bar = car.mesh.getObjectByName("police-lightbar");
-    if (bar) {
-      bar.material.color.setHex(Math.floor(ctx.time * 6) % 2 === 0 ? 0xff2222 : 0x2244ff);
-    }
+    // Flash the split light bar: red on one side, blue on the other, alternating.
+    const barRed = car.mesh.getObjectByName("police-lightbar-red");
+    const barBlue = car.mesh.getObjectByName("police-lightbar-blue");
+    const phase = Math.floor(ctx.time * 7) % 2 === 0;
+    if (barRed) barRed.material.color.setHex(phase ? 0xff2222 : 0x551111);
+    if (barBlue) barBlue.material.color.setHex(phase ? 0x111155 : 0x2244ff);
+  }
+  if (police.heli) {
+    police.roster.unshift({ unit: "AIR-1", distance: 42, behaviour: "OVERHEAD" });
   }
 
   // Arrest: a cruiser sitting on an on-foot player for two seconds ends the run.
@@ -132,12 +291,15 @@ export function updatePolice(ctx, dt) {
   if (player.wanted === 0 && police.cars.length > 0) {
     for (const car of police.cars) ctx.scene.remove(car.mesh);
     police.cars.length = 0;
+    police.roster = [];
   }
 }
 
 export function clearPolice(ctx) {
   for (const car of ctx.police.cars) ctx.scene.remove(car.mesh);
   ctx.police.cars.length = 0;
+  ctx.police.roster = [];
   ctx.police.heat = 0;
   ctx.police.arrestTimer = 0;
+  removePoliceHelicopter(ctx);
 }

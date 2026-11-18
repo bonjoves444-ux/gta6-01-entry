@@ -1,4 +1,7 @@
-// main.js — SOLMAR boot, game loop, camera, pedestrians, cash pickups and game states.
+// main.js — SOLMAR boot, golden-hour lighting, the game loop, the camera,
+// pedestrians, cash pickups, the ferris wheel, and the game states.
+// Shot mode (?shot=1..4) runs the chase LIVE: the car drives at speed, the
+// police close in and the helicopter circles overhead while the camera rolls.
 import * as THREE from "three";
 import { buildCity } from "./city.js";
 import { createInputHandler } from "./input.js";
@@ -8,17 +11,20 @@ import {
 } from "./vehicles.js";
 import {
   createPoliceSystem, updatePolice, clearPolice, raiseWanted,
+  spawnPoliceCar, spawnPoliceHelicopter,
 } from "./police.js";
 import {
   createMissionSystem, startMission, updateMissions, updateTaxiJob, startTaxiJob,
+  missionStageText,
 } from "./missions.js";
 import {
   createCombatSystem, updateCombatEffects, updateEnemies, tryPunch, tryShoot,
-  addCrashSparks, spawnEnemy,
+  addCrashSparks, spawnEnemy, switchWeapon,
 } from "./combat.js";
 import { createHud } from "./hud.js";
 import { createAudioSystem } from "./audio.js";
 import { createSaveSystem } from "./save.js";
+import { createShopSystem, nearestShop, openShop, closeShop } from "./shops.js";
 import { readShotNumber, applyShotScene } from "./shots.js";
 
 const canvas = document.getElementById("game-canvas");
@@ -27,16 +33,19 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87b8d8);
-scene.fog = new THREE.Fog(0x87b8d8, 180, 420);
+// Golden hour over the coast: a warm orange sky, matching fog, and a low sun.
+scene.background = new THREE.Color(0xff9e57);
+scene.fog = new THREE.Fog(0xff9e57, 200, 480);
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
 camera.position.set(-40, 24, 80);
 
-const sun = new THREE.DirectionalLight(0xfff2d0, 1.15);
-sun.position.set(120, 180, 60);
+const sun = new THREE.DirectionalLight(0xffb36b, 1.5);
+sun.position.set(-160, 55, 90);
 scene.add(sun);
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+scene.add(new THREE.AmbientLight(0xffd9b0, 0.6));
+const duskFill = new THREE.HemisphereLight(0xffc98a, 0x3a2a4a, 0.35);
+scene.add(duskFill);
 
 const input = createInputHandler(canvas);
 const hud = createHud();
@@ -45,23 +54,25 @@ const save = createSaveSystem();
 const city = buildCity(scene);
 const player = createPlayer(scene, city.playerSpawn);
 const cars = spawnParkedCars(scene, city);
-const traffic = spawnTrafficCars(scene, 14);
+const traffic = spawnTrafficCars(scene, 18);
 const police = createPoliceSystem(scene);
 const missions = createMissionSystem(scene);
 const combat = createCombatSystem(scene);
+const shops = createShopSystem(scene);
 
 // The shared context every system reads: scene, player, city, HUD, audio, police.
 const ctx = {
   scene, camera, renderer, sun, city, input, hud, audio, save,
-  player, cars, traffic, police, missions, combat,
+  player, cars, traffic, police, missions, combat, shops,
   pedestrians: [],
   time: 0,
-  timeOfDay: "day",
+  timeOfDay: "sunset",
   cameraHeading: 0,
   cameraMode: "chase",
   cameraDistance: 13,
   state: "menu",
   gameOver,
+  shotLive: false,
   effects: {
     addCrashSparks(x, y, z) { addCrashSparks(ctx, x, y, z); },
   },
@@ -79,11 +90,12 @@ function gameOver(reason) {
 
 // --- Pedestrians -----------------------------------------------------------
 const PED_COLORS = [0xff8c42, 0x37d67a, 0xe83a8a, 0x2a6fd8, 0xf2f2f2, 0xffd23e];
+const PED_SHIRTS = [0xff8c42, 0x37d67a, 0xe83a8a, 0x2a6fd8, 0xf2f2f2, 0xffd23e, 0x9d6bd8, 0x37c8c8];
 function spawnPedestrians(count) {
   const peds = [];
   for (let i = 0; i < count; i++) {
     const group = new THREE.Group();
-    const color = PED_COLORS[i % PED_COLORS.length];
+    const color = PED_SHIRTS[i % PED_SHIRTS.length];
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.4),
       new THREE.MeshLambertMaterial({ color }));
     body.position.y = 1.1;
@@ -137,7 +149,7 @@ function updatePedestrians(dt) {
   }
 }
 
-ctx.pedestrians = spawnPedestrians(26);
+ctx.pedestrians = spawnPedestrians(34);
 
 // --- Cash pickups ----------------------------------------------------------
 const cashPickups = [];
@@ -147,6 +159,7 @@ function spawnCashPickups() {
   const spots = [
     [-110, -110], [110, 110], [0, -110], [-110, 0], [110, -55],
     [55, 110], [-55, -110], [165, 110], [-165, -55], [55, 0],
+    [-165, 165], [165, -165],
   ];
   for (const [x, z] of spots) {
     const mesh = new THREE.Mesh(geo, mat);
@@ -181,6 +194,10 @@ function updateCamera(dt) {
   const heading = player.inCar ? player.inCar.heading : player.heading;
   let desiredHeading = heading;
   if (ctx.cameraMode === "wide") desiredHeading = heading + 0.6;
+  // On foot the camera holds its angle: letting it chase the player's heading
+  // feeds back into camera-relative walking and Rio spirals while strafing.
+  // Behind the wheel the camera follows the car, which steers on its own.
+  if (!player.inCar && !ctx.shotLive) desiredHeading = ctx.cameraHeading;
   let diff = desiredHeading - ctx.cameraHeading;
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
@@ -198,14 +215,45 @@ function updateCamera(dt) {
 }
 
 // --- Rival crew during the heist -------------------------------------------
-let heistEnemiesSpawned = false;
+let heistSpawnedFor = -1;
 function maybeSpawnHeistEnemies() {
-  if (missions.index === 4 && !heistEnemiesSpawned) {
-    heistEnemiesSpawned = true;
+  if (missions.index === 4 && heistSpawnedFor !== 4) {
+    heistSpawnedFor = 4;
     spawnEnemy(ctx, 62, -48);
     spawnEnemy(ctx, 48, -62);
     hud.showToast("Rival crew is guarding the bank!");
   }
+  if (missions.index === 5 && heistSpawnedFor !== 5) {
+    heistSpawnedFor = 5;
+    spawnEnemy(ctx, -160, -100);
+    spawnEnemy(ctx, -150, -122);
+    hud.showToast("The informant's friends are watching the wheel!");
+  }
+}
+
+// --- Live shot mode ----------------------------------------------------------
+// In shot mode the game plays itself: Rio's car holds its staged speed down
+// the road, cruisers chase and the helicopter circles, so the frame is a
+// moving chase, not a frozen tableau. No input, no mission progress, no bust.
+function updateShotLive(dt) {
+  const car = player.inCar;
+  if (car) {
+    car.speed = ctx.shotSpeed || 28;
+    car.mesh.position.x += Math.sin(car.heading) * car.speed * dt;
+    car.mesh.position.z += Math.cos(car.heading) * car.speed * dt;
+    car.mesh.position.x = Math.max(-198, Math.min(198, car.mesh.position.x));
+    car.mesh.position.z = Math.max(-198, Math.min(198, car.mesh.position.z));
+    car.mesh.rotation.y = car.heading;
+    for (const wheel of car.wheels) wheel.rotation.x += (car.speed * dt) / 0.42;
+    audio.setEnginePitch(0);
+  }
+  for (const tcar of traffic) updateTrafficCar(tcar, dt);
+  updatePedestrians(dt);
+  updatePolice(ctx, dt);
+  updateCombatEffects(ctx, dt);
+  updateEnemies(ctx, dt);
+  updateCamera(dt);
+  hud.update(ctx);
 }
 
 // --- Main loop ---------------------------------------------------------------
@@ -214,16 +262,30 @@ let taxiCooldown = 20;
 
 function animate() {
   requestAnimationFrame(animate);
+  window.SOLMAR_FRAMES = (window.SOLMAR_FRAMES || 0) + 1;
   const dt = Math.min(clock.getDelta(), 0.05);
   ctx.time += dt;
 
-  if (ctx.state === "playing" && !ctx.shotHold) {
+  // The big wheel turns and the tower beacon blinks, in every mode.
+  if (city.ferrisWheel) city.ferrisWheel.rotation.z += dt * 0.12;
+  const towerBeacon = scene.getObjectByName("tower-beacon");
+  if (towerBeacon) {
+    towerBeacon.visible = Math.floor(ctx.time * 1.5) % 2 === 0;
+  }
+
+  if (ctx.shotLive) {
+    updateShotLive(dt);
+  } else if (ctx.state === "playing") {
     if (input.wasPressed("KeyP") || input.wasPressed("Escape")) {
       ctx.state = "paused";
       document.getElementById("pause-overlay").style.display = "flex";
       audio.setEnginePitch(0);
     }
-    if (input.wasPressed("KeyE")) tryEnterOrExitCar(ctx);
+    if (input.wasPressed("KeyE")) {
+      const shop = nearestShop(ctx, 8);
+      if (shop) openShop(ctx, shop);
+      else tryEnterOrExitCar(ctx);
+    }
     if (input.wasPressed("KeyC")) {
       const next = (CAMERA_MODES.indexOf(ctx.cameraMode) + 1) % CAMERA_MODES.length;
       ctx.cameraMode = CAMERA_MODES[next];
@@ -235,8 +297,17 @@ function animate() {
     }
     if (input.wasPressed("KeyL")) save.saveGame(ctx);
     if (input.wasPressed("KeyF")) tryPunch(ctx);
-    if (input.mouseClicked()) tryShoot(ctx);
     if (input.wasPressed("KeyT")) startTaxiJob(ctx);
+    if (input.wasPressed("Digit1")) switchWeapon(ctx, "pistol");
+    if (input.wasPressed("Digit2")) switchWeapon(ctx, "smg");
+    if (input.wasPressed("Digit3")) switchWeapon(ctx, "shotgun");
+    if (input.wasPressed("KeyR")) {
+      const station = audio.nextStation();
+      hud.setRadio(station.name, station.track);
+      hud.showToast("Radio: " + station.name);
+    }
+    if (input.mouseClicked()) tryShoot(ctx);
+    if (input.mouseDown() && player.weapon === "smg") tryShoot(ctx);
 
     if (player.inCar) {
       drivePlayerCar(ctx, player.inCar, dt);
@@ -272,10 +343,6 @@ function animate() {
     updateCamera(dt);
     hud.update(ctx);
   }
-  if (ctx.state === "playing" && ctx.shotHold) {
-    updateCamera(dt);
-    hud.update(ctx);
-  }
 
   // The beacon pulses so the objective is easy to spot from across the city.
   if (missions.beacon.visible) {
@@ -290,6 +357,8 @@ function animate() {
 function startGame(fromSave) {
   audio.unlock();
   audio.startMusic();
+  const station = audio.station();
+  hud.setRadio(station.name, station.track);
   document.getElementById("start-overlay").style.display = "none";
   document.getElementById("pause-overlay").style.display = "none";
   document.getElementById("gameover-overlay").style.display = "none";
@@ -305,12 +374,16 @@ function startGame(fromSave) {
   } else {
     player.cash = 0;
     player.health = 100;
+    player.rep = 0;
     player.wanted = 0;
     player.ammo = 24;
+    player.weapon = "pistol";
+    player.weapons = { pistol: true, smg: false, shotgun: false };
+    player.ammoByWeapon = { pistol: 24, smg: 0, shotgun: 0 };
     missions.index = 0;
     missions.completed = 0;
     missions.finished = false;
-    heistEnemiesSpawned = false;
+    heistSpawnedFor = -1;
     clearPolice(ctx);
     player.mesh.position.set(city.playerSpawn.x, 0, city.playerSpawn.z);
     startMission(ctx, 0);
@@ -327,6 +400,7 @@ document.getElementById("resume-btn").addEventListener("click", () => {
 document.getElementById("save-btn").addEventListener("click", () => save.saveGame(ctx));
 document.getElementById("restart-btn").addEventListener("click", () => startGame(false));
 document.getElementById("retry-btn").addEventListener("click", () => startGame(false));
+document.getElementById("shop-close-btn").addEventListener("click", () => closeShop(ctx));
 document.getElementById("sound-btn").addEventListener("click", () => {
   const muted = audio.toggleMute();
   document.getElementById("sound-btn").textContent = "Sound: " + (muted ? "OFF" : "ON");
@@ -340,12 +414,20 @@ window.addEventListener("resize", () => {
 
 // A tiny debug handle for play-testing: position, heading and car state.
 window.SOLMAR_DEBUG = () => ({
-  x: Math.round(player.mesh.position.x * 10) / 10,
-  z: Math.round(player.mesh.position.z * 10) / 10,
-  heading: Math.round(player.heading * 100) / 100,
+  x: Math.round((player.inCar ? player.inCar.mesh.position.x : player.mesh.position.x) * 10) / 10,
+  z: Math.round((player.inCar ? player.inCar.mesh.position.z : player.mesh.position.z) * 10) / 10,
+  heading: Math.round((player.inCar ? player.inCar.heading : player.heading) * 100) / 100,
   cameraHeading: Math.round(ctx.cameraHeading * 100) / 100,
   inCar: !!player.inCar,
+  speed: player.inCar ? Math.round(player.inCar.speed * 3.6) : 0,
   wanted: player.wanted,
+  mission: missions.index + 1,
+  stage: missionStageText(missions),
+  heli: !!police.heli,
+  policeCars: police.cars.length,
+  frames: window.SOLMAR_FRAMES || 0,
+  time: Math.round(ctx.time * 100) / 100,
+  shotLive: !!ctx.shotLive,
 });
 
 // --- Screenshot scenes -------------------------------------------------------
@@ -354,11 +436,11 @@ if (shot > 0) {
   document.getElementById("start-overlay").style.display = "none";
   ctx.state = "playing";
   applyShotScene(ctx, shot);
-  // Let the first frames settle, then hold the chase camera steady for the shot.
+  // Let the first frames settle, then roll the live chase for the shot.
   updateCamera(0.5);
   hud.update(ctx);
 } else {
-  hud.setObjective("SOLMAR CITY", "Welcome to Solmar. Steal a car and meet Marco at the docks.");
+  hud.setObjective("SOLMAR CITY", "Welcome to Solmar. Steal a car and meet Marco at the docks.", "8 MISSIONS · GOLDEN HOUR");
 }
 
 animate();

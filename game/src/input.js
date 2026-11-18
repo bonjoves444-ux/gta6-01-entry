@@ -1,4 +1,6 @@
-// input.js — keyboard and mouse state for walking, driving, combat and menus.
+// input.js — keyboard and mouse state for walking, driving, combat, radio
+// and menus. Keys are read by code, so WASD, arrows, numbers and letters
+// all land here first.
 export function createInputHandler(canvas) {
   const keys = {};
   const pressed = {};
@@ -48,6 +50,16 @@ export function createInputHandler(canvas) {
     },
     mouseDown() {
       return mouseDown;
+    },
+    // True when any of the given codes went down on this frame.
+    anyPressed(codes) {
+      return codes.some((code) => !!pressed[code]);
+    },
+    // Drop every pending press without waiting for the frame to end — used
+    // when a menu opens and the key that opened it must not leak through.
+    clearPressed() {
+      for (const code of Object.keys(pressed)) pressed[code] = false;
+      mouseClicked = false;
     },
     // Call once per frame after the game has read the input.
     endFrame() {

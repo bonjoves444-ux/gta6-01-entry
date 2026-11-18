@@ -1,7 +1,8 @@
-// A tiny static server for game/ (Node 22, standard library only), so an entry can be played
-// locally without a build step: `node serve.ts` serves game/ on http://localhost:8080.
-// It sends the MIME types a browser game needs, refuses any path outside game/, and otherwise
-// does nothing clever: this is a development convenience, not a web server for the internet.
+// serve.ts — a tiny static server for game/ (Node 22, standard library only).
+// Run `node serve.ts` and play at http://localhost:8080; pass --port 9000 or
+// --host 0.0.0.0 to change where it listens. It sends the MIME types a browser
+// game needs, refuses any path outside game/, logs each request, and otherwise
+// does nothing clever: a development convenience, not a web server for the net.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -9,9 +10,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
 const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+function flagValue(name, fallback) {
+  const at = args.indexOf(name);
+  if (at === -1 || at + 1 >= args.length) return fallback;
+  return args[at + 1];
+}
+const wantedPort = Number(flagValue('--port', '8080'));
+const port = Number.isInteger(wantedPort) && wantedPort > 0 && wantedPort < 65536 ? wantedPort : 8080;
+const host = flagValue('--host', '127.0.0.1');
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -61,12 +67,13 @@ createServer((request, response) => {
     response.writeHead(404).end('not found');
     return;
   }
+  console.log(`${request.method} ${pathname} -> 200 (${size} bytes)`);
   response.writeHead(200, {
     'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
   });
   createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`game/ is on http://localhost:${port}`);
+}).listen(port, host, () => {
+  console.log(`game/ is on http://${host}:${port}`);
 });

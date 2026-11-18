@@ -1,8 +1,9 @@
-// main.ts — SOLMAR entry program for make.fun gta6-01.
+// main.ts — SOLMAR entry program for make.fun gta6-01, round 2.
 // Copies game/ and screenshots/ from this repository into the output directory
 // and writes dossier.json there with buildDossier from vendor/makefun-game.ts.
 // The output directory is $MAKEFUN_OUTPUT_DIR, defaulting to /output; the
 // program never deletes the output directory itself, it only writes into it.
+// Round 2 ships eight missions, the police helicopter, shops, radio and NOS.
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,5 +22,6 @@ await cp(join(repoRoot, "screenshots"), join(outputDir, "screenshots"), { recurs
 const dossier = await buildDossier(repoRoot, { text_max_bytes: 163840 });
 await writeFile(join(outputDir, "dossier.json"), dossier);
 
-console.log("SOLMAR entry written to " + outputDir);
+console.log("SOLMAR round 2 entry written to " + outputDir);
 console.log("dossier.json bytes: " + dossier.length);
+console.log("screenshots shipped: 1-chase, 2-downtown, 3-mission, 4-dusk");

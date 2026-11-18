@@ -6,39 +6,63 @@
 <link rel="icon" href="data:,">
 <title>SOLMAR — Open-World Crime Game</title>
 <style>
-  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b1c2c;
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#3a1e3a;
     font-family:Verdana,Arial,sans-serif;color:#fff}
   #game-canvas{display:block;width:100%;height:100%}
   #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
-  #minimap-wrap{position:absolute;top:14px;right:14px;width:190px;height:190px;
+  #minimap-wrap{position:absolute;top:14px;right:14px;width:200px;height:200px;
     border:3px solid rgba(255,255,255,.85);border-radius:50%;overflow:hidden;
     background:#12324a;box-shadow:0 0 0 3px rgba(0,0,0,.45)}
   #minimap{width:100%;height:100%;display:block}
-  #wanted{position:absolute;top:16px;right:222px;font-size:34px;letter-spacing:4px;
+  #wanted{position:absolute;top:16px;right:232px;font-size:34px;letter-spacing:4px;
     color:#ffd23e;text-shadow:0 2px 0 #000,0 0 12px rgba(0,0,0,.8)}
-  #cash{position:absolute;top:60px;right:222px;font-size:26px;font-weight:bold;color:#7dff9a;
+  #cash{position:absolute;top:60px;right:232px;font-size:26px;font-weight:bold;color:#7dff9a;
     text-shadow:0 2px 0 #000}
-  #health-wrap{position:absolute;top:100px;right:222px;width:180px}
+  #health-wrap{position:absolute;top:100px;right:232px;width:180px}
   #health-label{font-size:15px;font-weight:bold;text-shadow:0 1px 0 #000;margin-bottom:3px}
   #health-bar-outer{height:14px;background:rgba(0,0,0,.6);border:2px solid #fff;border-radius:7px}
   #health-bar{height:100%;width:100%;background:#37d67a;border-radius:5px}
-  #objective{position:absolute;top:14px;left:14px;max-width:460px;background:rgba(0,0,0,.62);
+  #rep-wrap{position:absolute;top:140px;right:232px;width:180px}
+  #rep-label{font-size:11px;font-weight:bold;text-shadow:0 1px 0 #000;margin-bottom:3px;color:#ffd23e;white-space:nowrap}
+  #rep-bar-outer{height:9px;background:rgba(0,0,0,.6);border:2px solid #ffd23e;border-radius:5px}
+  #rep-bar{height:100%;width:0%;background:#ffd23e;border-radius:3px}
+  #roster{position:absolute;top:230px;right:14px;width:200px;background:rgba(20,0,0,.72);
+    border:2px solid #ff5a5a;border-radius:6px;padding:8px 10px;display:none}
+  #roster-title{font-size:13px;font-weight:bold;color:#ff8a8a;letter-spacing:1px}
+  #roster-list{font-size:13px;line-height:1.6;margin-top:4px}
+  #objective{position:absolute;top:14px;left:14px;max-width:480px;background:rgba(0,0,0,.62);
     border-left:6px solid #ffd23e;padding:10px 14px;border-radius:4px}
   #objective-title{font-size:19px;font-weight:bold;color:#ffd23e}
+  #objective-stage{font-size:13px;color:#7dd8ff;font-weight:bold;margin-top:2px}
   #objective-text{font-size:16px;margin-top:4px;line-height:1.35}
   #speed{position:absolute;bottom:18px;right:20px;font-size:30px;font-weight:bold;
     text-shadow:0 2px 0 #000;text-align:right}
   #speed small{font-size:15px;color:#ffd23e}
-  #toast{position:absolute;bottom:110px;left:50%;transform:translateX(-50%);
+  #weapons{position:absolute;bottom:18px;left:16px;display:flex;gap:8px}
+  .weapon-slot{width:104px;background:rgba(0,0,0,.55);border:2px solid #888;border-radius:6px;
+    padding:6px 8px;font-size:13px;line-height:1.4;color:#bbb}
+  .weapon-slot.owned{color:#fff;border-color:#fff}
+  .weapon-slot.selected{border-color:#ffd23e;background:rgba(60,40,0,.75);color:#ffd23e}
+  .weapon-slot .weapon-name{font-weight:bold}
+  .weapon-slot .weapon-ammo{font-size:12px}
+  #radio{position:absolute;bottom:96px;left:16px;background:rgba(0,0,0,.55);border-radius:4px;
+    padding:6px 10px;font-size:13px;display:none}
+  #radio-station{color:#7dd8ff;font-weight:bold}
+  #radio-track{color:#fff}
+  #dialogue{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);max-width:640px;
+    background:rgba(0,0,0,.72);border-left:6px solid #7dd8ff;padding:10px 16px;border-radius:4px;
+    font-size:17px;line-height:1.4;display:none;text-align:left}
+  #dialogue-name{font-weight:bold}
+  #toast{position:absolute;bottom:220px;left:50%;transform:translateX(-50%);
     background:rgba(0,0,0,.72);padding:10px 22px;border-radius:6px;font-size:20px;
     font-weight:bold;display:none;text-align:center}
-  #hint{position:absolute;bottom:18px;left:16px;font-size:14px;line-height:1.5;
-    background:rgba(0,0,0,.55);padding:8px 12px;border-radius:4px}
+  #hint{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);font-size:13px;line-height:1.5;
+    background:rgba(0,0,0,.55);padding:8px 12px;border-radius:4px;text-align:center}
   #crosshair{position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;
     font-size:22px;text-align:center;color:#fff;text-shadow:0 0 4px #000;display:none}
   .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(160deg,rgba(8,30,52,.88),rgba(120,40,10,.82));z-index:10}
-  .panel{max-width:640px;width:92%;background:rgba(0,0,0,.66);border:3px solid #ffd23e;
+    background:linear-gradient(160deg,rgba(20,8,40,.88),rgba(160,60,10,.82));z-index:10}
+  .panel{max-width:660px;width:92%;background:rgba(0,0,0,.66);border:3px solid #ffd23e;
     border-radius:12px;padding:28px 34px;text-align:center}
   .panel h1{margin:0 0 4px;font-size:52px;letter-spacing:6px;color:#ffd23e;
     text-shadow:0 3px 0 #b3541e}
@@ -51,7 +75,12 @@
   .big-btn:hover{background:#ffe27a}
   .small-btn{pointer-events:auto;cursor:pointer;font-size:16px;font-weight:bold;color:#fff;
     background:#1c6fb8;border:0;border-radius:6px;padding:9px 18px;margin:6px 4px 0}
-  #pause-overlay,#gameover-overlay{display:none}
+  #pause-overlay,#gameover-overlay,#shop-overlay{display:none}
+  #shop-overlay .panel{text-align:left}
+  .shop-item{display:flex;justify-content:space-between;align-items:center;
+    background:rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:16px}
+  .shop-item button{pointer-events:auto;cursor:pointer;font-size:15px;font-weight:bold;color:#201400;
+    background:#ffd23e;border:0;border-radius:6px;padding:8px 16px}
   #mission-banner{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
     font-size:44px;font-weight:bold;color:#ffd23e;text-shadow:0 3px 0 #000,0 0 24px rgba(0,0,0,.9);
     display:none;text-align:center}
@@ -64,28 +93,42 @@
 <canvas id="game-canvas"></canvas>
 <div id="hud">
   <div id="objective"><div id="objective-title">SOLMAR CITY</div>
+    <div id="objective-stage"></div>
     <div id="objective-text">Welcome to Solmar. Steal a car and meet Marco at the docks.</div></div>
   <div id="wanted"></div>
   <div id="cash">$0</div>
   <div id="health-wrap"><div id="health-label">HEALTH</div>
     <div id="health-bar-outer"><div id="health-bar"></div></div></div>
-  <div id="minimap-wrap"><canvas id="minimap" width="190" height="190"></canvas></div>
+  <div id="rep-wrap"><div id="rep-label">CREW REP 0% — NEW BLOOD</div>
+    <div id="rep-bar-outer"><div id="rep-bar"></div></div></div>
+  <div id="minimap-wrap"><canvas id="minimap" width="200" height="200"></canvas></div>
+  <div id="roster"><div id="roster-title">SOLMAR POLICE — RESPONSE</div>
+    <div id="roster-list"></div></div>
   <div id="speed"></div>
+  <div id="weapons">
+    <div class="weapon-slot owned selected" data-weapon="pistol"><div class="weapon-name">1 · PISTOL</div><div class="weapon-ammo">24 rds</div></div>
+    <div class="weapon-slot" data-weapon="smg"><div class="weapon-name">2 · SMG</div><div class="weapon-ammo">LOCKED</div></div>
+    <div class="weapon-slot" data-weapon="shotgun"><div class="weapon-name">3 · SHOTGUN</div><div class="weapon-ammo">LOCKED</div></div>
+  </div>
+  <div id="radio"><span id="radio-station">SOLMAR FM 101.5</span> — <span id="radio-track">Coastline Nights</span></div>
+  <div id="dialogue"><span id="dialogue-name">MARCO</span>: <span id="dialogue-line"></span></div>
   <div id="toast"></div>
   <div id="mission-banner"></div>
   <div id="crosshair">+</div>
-  <div id="hint">WASD move / drive &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; SPACE handbrake<br>
-    F punch &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; C camera &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+  <div id="hint">WASD move / drive &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; N NOS &nbsp;·&nbsp; SPACE handbrake<br>
+    1/2/3 weapons &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; C camera &nbsp;·&nbsp; P pause</div>
 </div>
 <div id="start-overlay" class="overlay"><div class="panel">
   <h1>SOLMAR</h1>
-  <h2>An open-world crime game — sun, sea, and one last job.</h2>
+  <h2>An open-world crime game — golden hour, one last job, and the whole coast.</h2>
   <p>You are <b>Rio Vega</b>, a getaway driver pulled back into crew life. Solmar City is
-  yours to explore: steal cars, outrun the Solmar Police, run five crew missions, take
-  taxi fares, and build your cash from $0 to king of the coast.</p>
+  yours to explore: steal cars, outrun the Solmar Police and their helicopter, run eight
+  crew missions, take taxi fares, buy guns at Ammu-Nation, tune your car at Rio's Garage,
+  and build your cash and crew rep from $0 to king of the coast.</p>
   <div class="controls">
-    <b>WASD</b> walk / drive &nbsp; <b>E</b> steal &amp; enter a car, exit a car<br>
-    <b>SPACE</b> handbrake &nbsp; <b>F</b> punch &nbsp; <b>CLICK</b> shoot pistol<br>
+    <b>WASD</b> walk / drive &nbsp; <b>E</b> steal &amp; enter a car, shop at the markers<br>
+    <b>N</b> NOS boost &nbsp; <b>SPACE</b> handbrake drift &nbsp; <b>1/2/3</b> pistol / SMG / shotgun<br>
+    <b>R</b> radio station &nbsp; <b>F</b> punch &nbsp; <b>CLICK</b> shoot &nbsp; <b>T</b> taxi fare<br>
     <b>C</b> change camera &nbsp; <b>P</b> pause &nbsp; <b>M</b> sound on/off &nbsp; <b>L</b> save game
   </div>
   <button id="start-btn" class="big-btn">START ENGINE</button><br>
@@ -103,6 +146,13 @@
   <h1 style="font-size:40px;color:#ff5a5a">BUSTED</h1>
   <p style="text-align:center" id="gameover-text">The Solmar Police caught up with Rio.</p>
   <button id="retry-btn" class="big-btn">TRY AGAIN</button>
+</div></div>
+<div id="shop-overlay" class="overlay"><div class="panel">
+  <h1 id="shop-title" style="font-size:32px">AMMU-NATION</h1>
+  <p id="shop-subtitle" style="text-align:center">Guns, ammo, no questions asked.</p>
+  <p style="text-align:center">Cash on hand: <b id="shop-cash">$0</b></p>
+  <div id="shop-items"></div>
+  <div style="text-align:center"><button id="shop-close-btn" class="big-btn">BACK TO THE STREETS</button></div>
 </div></div>
 <script type="module" src="./src/main.js"></script>
 </body>

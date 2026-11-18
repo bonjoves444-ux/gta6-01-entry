@@ -1,4 +1,5 @@
-// vehicles.js — cars the player can steal and drive, plus the city's traffic.
+// vehicles.js — the cars Rio can steal and drive, the city's traffic,
+// and the arcade driving model: throttle, steering, handbrake slides and NOS.
 import * as THREE from "three";
 import { makeSeededRandom, randomPick, randomRange } from "./random.js";
 import { resolveCityCollision } from "./city.js";
@@ -27,7 +28,7 @@ export function buildCarMesh(color, isPolice) {
     group.add(wheel);
     wheels.push(wheel);
   }
-  // Headlights and taillights so night and dusk shots read as cars at a glance.
+  // Headlights and taillights so dusk shots read as cars at a glance.
   const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
   for (const hx of [-0.65, 0.65]) {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.22, 0.1), headMat);
@@ -41,17 +42,38 @@ export function buildCarMesh(color, isPolice) {
     group.add(tail);
   }
   if (isPolice) {
-    const lightBar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 0.5),
+    // Split light bar: red half and blue half, flashed alternately by police.js.
+    const barRed = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.5),
       new THREE.MeshBasicMaterial({ color: 0xff2222 }));
-    lightBar.position.set(0, 1.75, -0.2);
-    lightBar.name = "police-lightbar";
-    group.add(lightBar);
+    barRed.position.set(-0.32, 1.75, -0.2);
+    barRed.name = "police-lightbar-red";
+    group.add(barRed);
+    const barBlue = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.5),
+      new THREE.MeshBasicMaterial({ color: 0x2244ff }));
+    barBlue.position.set(0.32, 1.75, -0.2);
+    barBlue.name = "police-lightbar-blue";
+    group.add(barBlue);
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.3, 4.42),
       new THREE.MeshBasicMaterial({ color: 0xffffff }));
     stripe.position.y = 0.62;
     group.add(stripe);
+    // Roof number so the helicopter crew can call the unit out.
+    const roofMark = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.9),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e }));
+    roofMark.position.set(0, 1.66, 0.9);
+    group.add(roofMark);
   }
-  return { group, wheels };
+  // NOS flame cone at the exhaust, hidden until the boost fires.
+  const flame = new THREE.Mesh(
+    new THREE.ConeGeometry(0.35, 1.6, 8),
+    new THREE.MeshBasicMaterial({ color: 0x3aa7ff, transparent: true, opacity: 0.9 })
+  );
+  flame.position.set(0, 0.55, -2.8);
+  flame.rotation.x = -Math.PI / 2;
+  flame.visible = false;
+  flame.name = "nos-flame";
+  group.add(flame);
+  return { group, wheels, flame };
 }
 
 export function createCar(scene, options) {
@@ -63,6 +85,7 @@ export function createCar(scene, options) {
   return {
     mesh: built.group,
     wheels: built.wheels,
+    flame: built.flame,
     name: options.name || randomPick(makeSeededRandom((options.seed || 7) + 3), CAR_NAMES),
     color,
     isPolice: !!options.isPolice,
@@ -70,6 +93,9 @@ export function createCar(scene, options) {
     speed: 0,
     heading: options.heading || 0,
     health: 100,
+    armor: 0,
+    nos: 100,
+    boosting: false,
     routeAxis: options.routeAxis || "x",
     routeFixed: options.routeFixed || 0,
     routeDirection: options.routeDirection || 1,
@@ -101,7 +127,7 @@ export function spawnParkedCars(scene, city) {
   return cars;
 }
 
-// Traffic cars cruise the road grid on straight lanes and turn at intersections.
+// Traffic cars cruise the road grid on straight lanes and wrap at the city edge.
 export function spawnTrafficCars(scene, count) {
   const rng = makeSeededRandom(99);
   const cars = [];
@@ -140,18 +166,28 @@ export function updateTrafficCar(car, dt) {
   for (const wheel of car.wheels) wheel.rotation.x += (car.routeSpeed * dt) / 0.42;
 }
 
-// Arcade driving: throttle, braking, steering that tightens at speed, handbrake slides.
+// Arcade driving: throttle, braking, steering that tightens at speed,
+// handbrake slides, and NOS — hold N for a blue-flame boost that drains the tank.
 export function drivePlayerCar(ctx, car, dt) {
   const input = ctx.input;
   const axes = input.moveAxes();
   const handbrake = input.isDown("Space");
-  const maxSpeed = 34;
-  const accel = handbrake ? 4 : 22;
+  const wantNos = input.isDown("KeyN") && car.nos > 0 && car.speed > 4;
+  const maxSpeed = wantNos ? 48 : 34;
+  const accel = handbrake ? 4 : wantNos ? 34 : 22;
   if (axes.forward > 0) car.speed += accel * dt;
   if (axes.forward < 0) car.speed -= (car.speed > 0.5 ? 30 : 12) * dt;
   if (axes.forward === 0) car.speed -= Math.sign(car.speed) * Math.min(Math.abs(car.speed), 8 * dt);
   if (handbrake) car.speed -= Math.sign(car.speed) * Math.min(Math.abs(car.speed), 26 * dt);
   car.speed = Math.max(-12, Math.min(maxSpeed, car.speed));
+  car.boosting = wantNos && car.speed > 4;
+  if (car.boosting) {
+    car.nos = Math.max(0, car.nos - dt * 30);
+    if (Math.random() < 0.3) ctx.audio.playNos();
+  } else {
+    car.nos = Math.min(100, car.nos + dt * 4);
+  }
+  if (car.flame) car.flame.visible = car.boosting;
   const steerAmount = axes.strafe * (handbrake ? 1.6 : 1.0) * Math.min(1, Math.abs(car.speed) / 10) * 1.9 * dt;
   car.heading -= steerAmount * Math.sign(car.speed || 1);
   const forwardX = Math.sin(car.heading);
@@ -161,7 +197,8 @@ export function drivePlayerCar(ctx, car, dt) {
   const resolved = resolveCityCollision(ctx.city, nextX, nextZ, 2.4);
   if (resolved.hit) {
     if (Math.abs(car.speed) > 14) {
-      ctx.player.health = Math.max(0, ctx.player.health - 4);
+      const damage = Math.max(0, 4 - car.armor);
+      ctx.player.health = Math.max(0, ctx.player.health - damage);
       ctx.effects.addCrashSparks(car.mesh.position.x, 1, car.mesh.position.z);
       ctx.audio.playCrash();
     }

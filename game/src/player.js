@@ -1,4 +1,5 @@
-// player.js — Rio Vega on foot: walking, running, entering and leaving cars.
+// player.js — Rio Vega on foot: walking, running, entering and leaving cars,
+// and the loadout he carries: cash, health, wanted level, crew rep, weapons.
 import * as THREE from "three";
 import { resolveCityCollision } from "./city.js";
 import { nearestStealableCar } from "./vehicles.js";
@@ -6,7 +7,7 @@ import { raiseWanted } from "./police.js";
 
 export function createPlayer(scene, spawn) {
   const group = new THREE.Group();
-  // Rio: dark jacket, jeans, cap — a readable silhouette at a distance.
+  // Rio: dark jacket, jeans, gold cap — a readable silhouette at a distance.
   const jacketMat = new THREE.MeshLambertMaterial({ color: 0x2a4a6b });
   const jeansMat = new THREE.MeshLambertMaterial({ color: 0x2c3550 });
   const skinMat = new THREE.MeshLambertMaterial({ color: 0xd9a066 });
@@ -30,9 +31,11 @@ export function createPlayer(scene, spawn) {
   group.add(legR);
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.85, 0.26), jacketMat);
   armL.position.set(-0.58, 1.15, 0);
+  armL.name = "arm-left";
   group.add(armL);
   const armR = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.85, 0.26), jacketMat);
   armR.position.set(0.58, 1.15, 0);
+  armR.name = "arm-right";
   group.add(armR);
   group.position.set(spawn.x, 0, spawn.z);
   scene.add(group);
@@ -43,15 +46,19 @@ export function createPlayer(scene, spawn) {
     runSpeed: 11,
     health: 100,
     cash: 0,
+    rep: 0,
     wanted: 0,
     inCar: null,
     ammo: 24,
+    weapon: "pistol",
+    weapons: { pistol: true, smg: false, shotgun: false },
+    ammoByWeapon: { pistol: 24, smg: 0, shotgun: 0 },
     hasPackage: false,
     walkCycle: 0,
   };
 }
 
-// Walk with WASD relative to the camera heading; Shift runs.
+// Walk with WASD relative to the camera heading; Shift runs, arms swing.
 export function updatePlayerOnFoot(ctx, dt) {
   const player = ctx.player;
   const input = ctx.input;
@@ -83,6 +90,10 @@ export function updatePlayerOnFoot(ctx, dt) {
     const legR = player.mesh.getObjectByName("leg-right");
     if (legL) legL.rotation.x = swing;
     if (legR) legR.rotation.x = -swing;
+    const armL = player.mesh.getObjectByName("arm-left");
+    const armR = player.mesh.getObjectByName("arm-right");
+    if (armL) armL.rotation.x = -swing;
+    if (armR) armR.rotation.x = swing;
   }
   player.mesh.rotation.y = player.heading;
   player.mesh.visible = true;

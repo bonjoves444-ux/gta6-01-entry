@@ -1,6 +1,14 @@
-// combat.js — fists, the pistol, rival crew members, and hit effects.
+// combat.js — fists and three guns: the pistol Rio starts with, the fast SMG
+// and the close-range shotgun, plus rival crew members and hit effects.
+// Weapons are bought at Ammu-Nation; 1/2/3 switches between the ones owned.
 import * as THREE from "three";
 import { raiseWanted } from "./police.js";
+
+export const WEAPONS = {
+  pistol: { name: "Pistol", damage: 34, cooldown: 0.32, auto: false, pellets: 1, spread: 0, price: 0 },
+  smg: { name: "SMG", damage: 14, cooldown: 0.09, auto: true, pellets: 1, spread: 0.03, price: 600 },
+  shotgun: { name: "Shotgun", damage: 13, cooldown: 0.85, auto: false, pellets: 5, spread: 0.09, price: 900 },
+};
 
 export function createCombatSystem(scene) {
   const flashGeometry = new THREE.SphereGeometry(0.35, 8, 6);
@@ -8,15 +16,22 @@ export function createCombatSystem(scene) {
   const flash = new THREE.Mesh(flashGeometry, flashMaterial);
   flash.visible = false;
   scene.add(flash);
+  // A tracer line from the muzzle to the hit point, shown for one frame's flash.
+  const tracerGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 1),
+  ]);
+  const tracer = new THREE.Line(tracerGeo, new THREE.LineBasicMaterial({ color: 0xffe27a }));
+  tracer.visible = false;
+  scene.add(tracer);
   return {
     scene,
     flash,
+    tracer,
     flashTimer: 0,
     punchTimer: 0,
     shootCooldown: 0,
     enemies: [],
     sparks: [],
-    tracer: null,
   };
 }
 
@@ -38,7 +53,10 @@ export function updateCombatEffects(ctx, dt) {
   const combat = ctx.combat;
   if (combat.flashTimer > 0) {
     combat.flashTimer -= dt;
-    if (combat.flashTimer <= 0) combat.flash.visible = false;
+    if (combat.flashTimer <= 0) {
+      combat.flash.visible = false;
+      combat.tracer.visible = false;
+    }
   }
   for (let i = combat.sparks.length - 1; i >= 0; i--) {
     const spark = combat.sparks[i];
@@ -51,6 +69,19 @@ export function updateCombatEffects(ctx, dt) {
   }
   if (combat.shootCooldown > 0) combat.shootCooldown -= dt;
   if (combat.punchTimer > 0) combat.punchTimer -= dt;
+}
+
+// Switch to an owned weapon; locked ones get a toast instead of a switch.
+export function switchWeapon(ctx, key) {
+  const player = ctx.player;
+  if (!player.weapons[key]) {
+    ctx.hud.showToast(WEAPONS[key].name + " is locked — buy it at Ammu-Nation ($" + WEAPONS[key].price + ")");
+    return;
+  }
+  if (player.weapon === key) return;
+  player.weapon = key;
+  ctx.hud.showToast(WEAPONS[key].name + " ready — " + (player.ammoByWeapon[key] || 0) + " rounds");
+  ctx.audio.playWeaponSwitch();
 }
 
 // A rival crew member: a red-jacketed walker who shoves back when hit.
@@ -70,7 +101,7 @@ export function spawnEnemy(ctx, x, z) {
   group.add(legs);
   group.position.set(x, 0, z);
   ctx.scene.add(group);
-  const enemy = { mesh: group, health: 60, state: "idle" };
+  const enemy = { mesh: group, health: 60, state: "idle", hitTimer: 0 };
   ctx.combat.enemies.push(enemy);
   return enemy;
 }
@@ -101,7 +132,8 @@ export function updateEnemies(ctx, dt) {
       ctx.scene.remove(enemy.mesh);
       ctx.combat.enemies.splice(i, 1);
       ctx.player.cash += 50;
-      ctx.hud.showToast("Rival down. +$50");
+      ctx.player.rep = Math.min(100, (ctx.player.rep || 0) + 1);
+      ctx.hud.showToast("Rival down. +$50 · +1 rep");
     }
   }
 }
@@ -134,14 +166,22 @@ export function tryPunch(ctx) {
   }
 }
 
-// Shoot: a ray from the camera through the crosshair; hits enemies, peds and cars.
+// Shoot: rays from the camera through the crosshair; the shotgun fires a
+// spread of pellets, the SMG fires while the mouse is held down.
 export function tryShoot(ctx) {
   const combat = ctx.combat;
   const player = ctx.player;
-  if (combat.shootCooldown > 0 || player.inCar || player.ammo <= 0) return;
-  combat.shootCooldown = 0.32;
-  player.ammo -= 1;
-  ctx.audio.playShot();
+  const weapon = WEAPONS[player.weapon] || WEAPONS.pistol;
+  if (combat.shootCooldown > 0 || player.inCar) return;
+  if ((player.ammoByWeapon[player.weapon] || 0) <= 0) {
+    ctx.hud.showToast("Out of ammo — buy more at Ammu-Nation");
+    combat.shootCooldown = 0.4;
+    return;
+  }
+  combat.shootCooldown = weapon.cooldown;
+  player.ammoByWeapon[player.weapon] -= 1;
+  player.ammo = player.ammoByWeapon[player.weapon];
+  ctx.audio.playShot(player.weapon);
   const origin = ctx.camera.position.clone();
   const direction = new THREE.Vector3();
   ctx.camera.getWorldDirection(direction);
@@ -150,30 +190,38 @@ export function tryShoot(ctx) {
   combat.flash.position.copy(flashPos);
   combat.flash.visible = true;
   combat.flashTimer = 0.07;
-  const raycaster = new THREE.Raycaster(origin, direction, 0, 60);
   const targets = [];
   for (const enemy of combat.enemies) targets.push(enemy.mesh);
   for (const ped of ctx.pedestrians) targets.push(ped.mesh);
   for (const car of ctx.cars) targets.push(car.mesh);
-  const hits = raycaster.intersectObjects(targets, true);
-  if (hits.length > 0) {
-    const hitPoint = hits[0].point;
-    addCrashSparks(ctx, hitPoint.x, hitPoint.y, hitPoint.z);
-    let hitObject = hits[0].object;
-    while (hitObject.parent && hitObject.parent !== ctx.scene) hitObject = hitObject.parent;
-    for (const enemy of combat.enemies) {
-      if (enemy.mesh === hitObject) enemy.health -= 34;
-    }
-    for (const ped of ctx.pedestrians) {
-      if (ped.mesh === hitObject) {
-        ped.fleeing = true;
-        raiseWanted(ctx, 1, "Shots fired in Solmar City");
+  for (let p = 0; p < weapon.pellets; p++) {
+    const dir = direction.clone();
+    dir.x += (Math.random() - 0.5) * weapon.spread * 2;
+    dir.y += (Math.random() - 0.5) * weapon.spread * 2;
+    dir.normalize();
+    const raycaster = new THREE.Raycaster(origin, dir, 0, 60);
+    const hits = raycaster.intersectObjects(targets, true);
+    if (hits.length > 0) {
+      const hitPoint = hits[0].point;
+      addCrashSparks(ctx, hitPoint.x, hitPoint.y, hitPoint.z);
+      combat.tracer.geometry.setFromPoints([flashPos, hitPoint]);
+      combat.tracer.visible = true;
+      let hitObject = hits[0].object;
+      while (hitObject.parent && hitObject.parent !== ctx.scene) hitObject = hitObject.parent;
+      for (const enemy of combat.enemies) {
+        if (enemy.mesh === hitObject) enemy.health -= weapon.damage;
       }
-    }
-    for (const car of ctx.cars) {
-      if (car.mesh === hitObject) {
-        car.health -= 20;
-        if (car.health <= 0) addCrashSparks(ctx, car.mesh.position.x, 1, car.mesh.position.z);
+      for (const ped of ctx.pedestrians) {
+        if (ped.mesh === hitObject) {
+          ped.fleeing = true;
+          raiseWanted(ctx, 1, "Shots fired in Solmar City");
+        }
+      }
+      for (const car of ctx.cars) {
+        if (car.mesh === hitObject) {
+          car.health -= 20;
+          if (car.health <= 0) addCrashSparks(ctx, car.mesh.position.x, 1, car.mesh.position.z);
+        }
       }
     }
   }
