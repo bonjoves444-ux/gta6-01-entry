@@ -9,6 +9,8 @@
 
 import * as THREE from 'three';
 import { mulberry32, range, pick, clamp } from './random.js';
+// Car builds the kerbside parked cars below (and the traffic the
+// player can steal lives in vehicles.js too, same class).
 import { Car } from './vehicles.js';
 
 export const SEA_EDGE_X = -118;
@@ -832,34 +834,33 @@ export function buildCity(scene, seed) {
     group.add(bench);
   }
 
-  // --- parked cars: the street life that makes the avenues read as a
-  // city, not a test track. Static traffic cars at the curbs, clear of
-  // the driving lanes, the chase band (z 25..55 on Palm Strand) and the
-  // market square. They are set dressing, not stealable — E only ever
-  // enters the Comet.
+  // --- kerbside parked cars: fourteen still traffic cars that make
+  // the avenues feel inhabited instead of empty. They sit on the
+  // kerbs, well away from the lanes you drive, away from the Palm
+  // Strand chase stretch (z 25..55) and away from the market
+  // square. Pure scenery: they can never be stolen, the E prompt
+  // only ever opens the Comet.
   const parked = [];
   const parkedSpots = [
-    // Palm Strand east curb, facing north.
+    // East kerb of Palm Strand, noses pointing north.
     [-79.8, -115, 0], [-79.8, -95, 0], [-79.8, -75, 0],
     [-79.8, 75, 0], [-79.8, 95, 0], [-79.8, 115, 0],
-    // Palm Strand west curb, facing south.
+    // West kerb of Palm Strand, noses pointing south.
     [-90.0, -105, Math.PI], [-90.0, -85, Math.PI],
     [-90.0, 85, Math.PI], [-90.0, 105, Math.PI],
-    // Downtown cross streets.
+    // Downtown side streets.
     [28, -22, Math.PI / 2], [-8, -22, -Math.PI / 2],
     [28, -62, Math.PI / 2], [-28, 62, -Math.PI / 2],
   ];
   const parkedPaints = [0x3a6fd8, 0xd8a03a, 0x4a9a5a, 0xc0c4cc, 0x8a4ad8, 0xd84a4a, 0x3a8a8a, 0xe0e0e0, 0xff2e88, 0x2ec8ff];
-  for (let i = 0; i < parkedSpots.length; i++) {
-    const [px, pz, ph] = parkedSpots[i];
+  parkedSpots.forEach(([px, pz, ph], i) => {
     const car = new Car('traffic', parkedPaints[i % parkedPaints.length], px, pz, ph);
     group.add(car.mesh);
     parked.push(car);
-  }
+  });
 
-  // --- pedestrians -------------------------------------------------------------------------
-  // --- pedestrians: 30 now, with height variation, chat pairs that
-  // stand together on the sidewalk, and beach walkers by the sea.
+  // --- pedestrians: thirty people now, taller or shorter at random,
+  // pairs chatting on the pavement, a few strolling the beach.
   const pedCols = [0xff8a5a, 0x5aa8ff, 0xffd27a, 0x8a5ad8, 0x4ad84a, 0xe8e8e8];
   for (let i = 0; i < 30; i++) {
     const g = new THREE.Group();
@@ -874,24 +875,24 @@ export function buildCity(scene, seed) {
     let speed = 0.4 + rng() * 0.7;
     let amp = 8;
     if (i < 6) {
-      // Chat pairs on the Palm Strand sidewalk: two peds per spot,
-      // barely wandering, close enough to read as a group. All three
-      // spots sit well north of the title camera (z 28), so no pair
-      // ever looms in the menu foreground.
+      // Two per pavement spot, chatting: they barely drift, and every
+      // spot is far north of the title camera at z 28, so nobody
+      // wanders into the menu foreground.
       const spot = [-92.5, -77.5][i % 2];
       const sz = -100 + Math.floor(i / 2) * 45;
       anchor = { x: spot + (i % 2 ? 1.2 : -1.2), z: sz };
       speed = 0.08;
       amp = 1.5;
     } else if (i < 10) {
-      // Beach walkers by the umbrellas.
+      // Strollers down by the umbrellas and the sand.
       anchor = { x: -100 - rng() * 10, z: -100 + rng() * 200 };
     } else {
       anchor = { x: -92 + rng() * 150, z: -110 + rng() * 220 };
       if (rng() < 0.4) { anchor.x = -92.5; anchor.z = -110 + rng() * 220; }
     }
-    const s = 0.9 + rng() * 0.25;
-    g.scale.setScalar(s);
+    // Height varies a little from person to person.
+    const height = 0.9 + rng() * 0.25;
+    g.scale.setScalar(height);
     g.position.set(anchor.x, 0, anchor.z);
     group.add(g);
     peds.push({ mesh: g, anchor, phase: rng() * 6.28, speed, amp, dir: rng() * 6.28 });
@@ -956,8 +957,11 @@ export function buildCity(scene, seed) {
     }
     for (const p of peds) {
       p.dir += Math.sin(elapsed * 0.3 + p.phase) * dt * 0.4;
-      p.mesh.position.x = p.anchor.x + Math.sin(elapsed * p.speed * 0.2 + p.phase) * (p.amp || 8);
-      p.mesh.position.z = p.anchor.z + Math.cos(elapsed * p.speed * 0.16 + p.phase) * (p.amp || 8);
+      // Each ped wanders inside its own radius: chat pairs barely
+      // move (amp 1.5), everyone else roams the usual 8 metres.
+      const wander = p.amp || 8;
+      p.mesh.position.x = p.anchor.x + Math.sin(elapsed * p.speed * 0.2 + p.phase) * wander;
+      p.mesh.position.z = p.anchor.z + Math.cos(elapsed * p.speed * 0.16 + p.phase) * wander;
       p.mesh.rotation.y = Math.PI - (p.dir + elapsed * 0.1);
       p.mesh.position.y = Math.abs(Math.sin(elapsed * 3 + p.phase)) * 0.05;
     }
@@ -972,6 +976,7 @@ export function buildCity(scene, seed) {
   }
 
   setPalette('sunset');
+  // Hand back everything main.js needs, parked cars included.
   return {
     group, update, setPalette, setSun, locationNameAt, sunLight,
     garagePos: GARAGE_POS, ammuPos: AMMU_POS, marketPos: MARKET_POS,

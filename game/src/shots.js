@@ -127,14 +127,14 @@ export function applyShot(game, n) {
       const tc = document.getElementById('title-cash');
       if (tc) tc.textContent = 'CH 5 FERRIS LIGHTS · $5,200 · DAY 3, 18:40';
     } catch (err) { /* a missing save only hides CONTINUE */ }
-    // The menu camera sits at (-88, 28): hide any pedestrian within
-    // 12 m of it, or a wandering ped looms in the title foreground
-    // and eats the menu. Same staging as the palm hiding below.
+    // The title camera sits at (-88, 28): anyone strolling within
+    // 12 m of it would fill the menu foreground, so those peds are
+    // hidden for this shot. Same trick as the palm hiding below.
     if (city.peds) {
       for (const p of city.peds) {
-        if (Math.hypot(p.mesh.position.x + 88, p.mesh.position.z - 28) < 12) {
-          p.mesh.visible = false;
-        }
+        const dx = p.mesh.position.x + 88;
+        const dz = p.mesh.position.z - 28;
+        if (Math.hypot(dx, dz) < 12) p.mesh.visible = false;
       }
     }
     game.shotSpeed = 0;
